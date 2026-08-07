@@ -1,0 +1,90 @@
+[
+  {
+    "term": "prospect",
+    "english": "prospect or lead",
+    "literal": "",
+    "category": "CRM contact",
+    "explanation": "A person or organization that may become a customer but has not necessarily bought anything yet.",
+    "business_context": "In CRM usage, prospect is commonly used for a lead, potential customer, or sales opportunity contact.",
+    "example_fr": "Le prospect souhaite recevoir plus d'informations.",
+    "example_en": "The prospect would like to receive more information.",
+    "related_terms": ["client", "commercial", "relance"]
+  },
+  {
+    "term": "prospecteur",
+    "english": "prospector or outbound salesperson",
+    "literal": "person who prospects",
+    "category": "Sales role",
+    "explanation": "A person who searches for and contacts potential customers.",
+    "business_context": "In a CRM context, this role may create or qualify leads before handing them to another salesperson.",
+    "example_fr": "Le prospecteur ajoute de nouveaux contacts dans le CRM.",
+    "example_en": "The prospector adds new contacts to the CRM.",
+    "related_terms": ["prospect", "commercial", "relance"]
+  },
+  {
+    "term": "relance",
+    "english": "follow-up",
+    "literal": "restart or relaunch",
+    "category": "Follow-up",
+    "explanation": "A follow-up action after a previous message, quote, call, or meeting.",
+    "business_context": "In CRM work, relance can be a task to chase a reply, continue a sales discussion, or revive an inactive opportunity.",
+    "example_fr": "Une relance est prévue après l'envoi du devis.",
+    "example_en": "A follow-up is planned after the quote is sent.",
+    "related_terms": ["devis", "rappeler", "sans suite"]
+  },
+  {
+    "term": "sans suite",
+    "english": "closed with no further action",
+    "literal": "without continuation",
+    "category": "CRM status",
+    "explanation": "A case, request, or opportunity will not continue.",
+    "business_context": "In a pipeline, this can mean the lead is not being pursued or the request has been dropped.",
+    "example_fr": "Le dossier est classé sans suite.",
+    "example_en": "The file is closed with no further action.",
+    "related_terms": ["hors cible", "relance", "prospect"]
+  },
+  {
+    "term": "hors cible",
+    "english": "not in target",
+    "literal": "outside target",
+    "category": "Qualification",
+    "explanation": "The contact, request, or opportunity does not match the intended audience, scope, or criteria.",
+    "business_context": "CRM teams may use this when a lead is outside the target market, budget, geography, product fit, or project scope.",
+    "example_fr": "Ce prospect est hors cible pour cette offre.",
+    "example_en": "This prospect is not in target for this offer.",
+    "related_terms": ["sans suite", "prospect", "pre-etude"]
+  },
+  {
+    "term": "devis",
+    "english": "quote or estimate",
+    "literal": "",
+    "category": "Sales document",
+    "explanation": "A document describing proposed work, pricing, quantities, or commercial terms.",
+    "business_context": "In software or services work, a devis can precede approval, purchase order, signature, or project kickoff.",
+    "example_fr": "Le client demande un devis pour la nouvelle fonctionnalité.",
+    "example_en": "The customer is asking for a quote for the new feature.",
+    "related_terms": ["signe", "pre-etude", "client"]
+  },
+  {
+    "term": "client",
+    "english": "customer or client",
+    "literal": "",
+    "category": "CRM contact",
+    "explanation": "A person or organization that buys, uses, or receives a product or service.",
+    "business_context": "In CRM data, client usually means an existing customer rather than a potential lead.",
+    "example_fr": "Le client a validé la proposition.",
+    "example_en": "The customer approved the proposal.",
+    "related_terms": ["prospect", "devis", "signe"]
+  },
+  {
+    "term": "NRP",
+    "english": "no response",
+    "literal": "abbreviation often used for ne repond pas",
+    "category": "Call outcome",
+    "explanation": "A shorthand note meaning the person did not answer or there was no response.",
+    "business_context": "In CRM call logs, NRP can mark an attempted call where the contact was unreachable.",
+    "example_fr": "Appel effectué ce matin, statut NRP.",
+    "example_en": "Call made this morning, status no response.",
+    "related_terms": ["rappeler", "a rappeler", "relance"]
+  }
+]

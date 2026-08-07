@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>French Work Assistant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <main class="page">
+        <section class="hero">
+            <p class="eyebrow">Quick Lookup</p>
+            <h1>French Work Assistant</h1>
+            <p class="intro">
+                Look up French workplace, CRM, and software-team terms in plain English.
+            </p>
+        </section>
+
+        <section class="lookup-panel" aria-labelledby="lookup-title">
+            <div class="panel-header">
+                <h2 id="lookup-title">Quick Lookup</h2>
+                <p>Enter a French word or short phrase.</p>
+            </div>
+
+            <form class="search-form" id="lookup-form">
+                <input
+                    id="lookup-input"
+                    type="text"
+                    name="query"
+                    placeholder="Try: relance, devis, NRP"
+                    autocomplete="off"
+                    required
+                >
+                <button type="submit">Search</button>
+            </form>
+        </section>
+
+        <section id="result" class="result-region" aria-live="polite"></section>
+    </main>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

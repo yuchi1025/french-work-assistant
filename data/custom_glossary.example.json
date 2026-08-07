@@ -1,0 +1,13 @@
+[
+  {
+    "term": "example term",
+    "english": "generic English translation",
+    "literal": "optional literal translation",
+    "category": "Custom",
+    "explanation": "Plain-English explanation of the term.",
+    "business_context": "Generic context that is safe to keep on your own machine.",
+    "example_fr": "Phrase française d'exemple.",
+    "example_en": "Example English sentence.",
+    "related_terms": ["related example"]
+  }
+]

@@ -1,0 +1,79 @@
+[
+  {
+    "term": "commercial",
+    "english": "sales representative",
+    "literal": "commercial or sales-related person",
+    "category": "Workplace role",
+    "explanation": "A person responsible for selling, qualifying opportunities, and managing commercial conversations.",
+    "business_context": "In workplace messages, un commercial usually means a salesperson or account executive, not something related to advertising.",
+    "example_fr": "Le commercial va contacter le prospect cet apres-midi.",
+    "example_en": "The sales representative will contact the prospect this afternoon.",
+    "related_terms": ["prospect", "client", "devis", "relance"]
+  },
+  {
+    "term": "rendez-vous",
+    "english": "appointment or meeting",
+    "literal": "go to you",
+    "category": "Workplace scheduling",
+    "explanation": "A scheduled meeting, call, visit, or appointment.",
+    "business_context": "In sales or CRM workflows, it often means a booked conversation with a lead, customer, or partner.",
+    "example_fr": "Un rendez-vous est prevu demain avec le client.",
+    "example_en": "A meeting is scheduled tomorrow with the customer.",
+    "related_terms": ["RDV", "client", "rappeler"]
+  },
+  {
+    "term": "RDV",
+    "english": "appointment or meeting",
+    "literal": "abbreviation of rendez-vous",
+    "category": "Workplace scheduling",
+    "explanation": "A common shorthand for rendez-vous.",
+    "business_context": "Teams often use RDV in CRM notes, calendars, and short messages to mark a planned call or meeting.",
+    "example_fr": "RDV confirme pour jeudi matin.",
+    "example_en": "Meeting confirmed for Thursday morning.",
+    "related_terms": ["rendez-vous", "client", "commercial"]
+  },
+  {
+    "term": "pré-étude",
+    "english": "preliminary study",
+    "literal": "pre-study",
+    "category": "Requirements",
+    "explanation": "An early review used to understand feasibility, scope, constraints, or effort before a full proposal.",
+    "business_context": "In software or CRM work, this may refer to an initial analysis before quoting, planning, or committing to implementation.",
+    "example_fr": "Nous devons faire une pré-étude avant de préparer le devis.",
+    "example_en": "We need to do a preliminary study before preparing the quote.",
+    "related_terms": ["devis", "besoin", "hors cible"]
+  },
+  {
+    "term": "rappeler",
+    "english": "to call back",
+    "literal": "to call again",
+    "category": "Follow-up",
+    "explanation": "To call someone again, usually after a missed call, earlier conversation, or planned follow-up.",
+    "business_context": "In CRM tasks, rappeler often indicates that a person should be contacted by phone later.",
+    "example_fr": "Il faut rappeler le prospect vendredi.",
+    "example_en": "We need to call the prospect back on Friday.",
+    "related_terms": ["a rappeler", "relance", "NRP"]
+  },
+  {
+    "term": "à rappeler",
+    "english": "to call back",
+    "literal": "to be called again",
+    "category": "Follow-up",
+    "explanation": "A status or note meaning someone should be called back later.",
+    "business_context": "In CRM queues, à rappeler can identify records that need a future phone follow-up.",
+    "example_fr": "Le contact est marqué à rappeler la semaine prochaine.",
+    "example_en": "The contact is marked to be called back next week.",
+    "related_terms": ["rappeler", "relance", "rendez-vous"]
+  },
+  {
+    "term": "signé",
+    "english": "signed",
+    "literal": "signed",
+    "category": "Deal status",
+    "explanation": "Indicates that a document, agreement, quote, or contract has been signed.",
+    "business_context": "In a sales pipeline, signe usually means the opportunity has moved to a won or committed stage.",
+    "example_fr": "Le devis est signé par le client.",
+    "example_en": "The quote has been signed by the customer.",
+    "related_terms": ["devis", "client", "commercial"]
+  }
+]

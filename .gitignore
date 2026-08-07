@@ -2,5 +2,11 @@
 __pycache__/
 *.pyc
 .env
+data/custom_glossary.json
 data/*.db
+.pytest_cache/
+.coverage
+htmlcov/
+instance/
 .DS_Store
+Thumbs.db
