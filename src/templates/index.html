@@ -9,14 +9,19 @@
 <body>
     <main class="page">
         <section class="hero">
-            <p class="eyebrow">Quick Lookup</p>
+            <p class="eyebrow">French Workplace Language</p>
             <h1>French Work Assistant</h1>
             <p class="intro">
                 Look up French workplace, CRM, and software-team terms in plain English.
             </p>
         </section>
 
-        <section class="lookup-panel" aria-labelledby="lookup-title">
+        <div class="mode-tabs" role="tablist" aria-label="Assistant mode">
+            <button class="mode-tab is-active" id="lookup-tab" type="button" role="tab" aria-selected="true" aria-controls="lookup-mode">Quick Lookup</button>
+            <button class="mode-tab" id="translate-tab" type="button" role="tab" aria-selected="false" aria-controls="translate-mode">Translate &amp; Explain</button>
+        </div>
+
+        <section class="lookup-panel mode-panel" id="lookup-mode" role="tabpanel" aria-labelledby="lookup-tab">
             <div class="panel-header">
                 <h2 id="lookup-title">Quick Lookup</h2>
                 <p>Enter a French word or short phrase.</p>
@@ -35,7 +40,24 @@
             </form>
         </section>
 
-        <section id="result" class="result-region" aria-live="polite"></section>
+        <section class="lookup-panel mode-panel" id="translate-mode" role="tabpanel" aria-labelledby="translate-tab" hidden>
+            <div class="panel-header">
+                <h2>Translate &amp; Explain</h2>
+                <p>Paste French workplace, CRM, product, or software-development text.</p>
+            </div>
+
+            <form class="translate-form" id="translate-form">
+                <label class="sr-only" for="translate-input">French text</label>
+                <textarea id="translate-input" name="text" maxlength="6000" placeholder="Paste French text to translate and explain." required></textarea>
+                <div class="form-actions">
+                    <p id="character-count" class="character-count">0 / 6,000</p>
+                    <button type="submit">Translate &amp; Explain</button>
+                </div>
+            </form>
+        </section>
+
+        <section id="lookup-result" class="result-region" aria-live="polite"></section>
+        <section id="translate-result" class="result-region" aria-live="polite" hidden></section>
     </main>
 
     <script src="{{ url_for('static', filename='app.js') }}"></script>
