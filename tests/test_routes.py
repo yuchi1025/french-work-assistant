@@ -18,6 +18,7 @@ def test_lookup_api_returns_result():
 
     assert response.status_code == 200
     assert response.get_json()["result"]["term"] == "prospect"
+    assert response.get_json()["result"]["source"] == "CRM"
 
 
 def test_lookup_api_returns_not_found():

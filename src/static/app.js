@@ -16,16 +16,23 @@ function renderRelatedTerms(terms) {
         <div class="field-block">
             <span class="field-label">Related terms</span>
             <div class="related-list">
-                ${terms.map((term) => `<span>${escapeHtml(term)}</span>`).join("")}
+                ${terms.map((term) => `<button type="button" class="related-term" data-query="${escapeHtml(term)}">${escapeHtml(term)}</button>`).join("")}
             </div>
         </div>
     `;
 }
 
 function renderResult(entry) {
-    const literal = entry.literal
-        ? `<p><strong>Literal translation:</strong> ${escapeHtml(entry.literal)}</p>`
+    const literal = entry.literal_translation
+        ? `<p><strong>Literal translation:</strong> ${escapeHtml(entry.literal_translation)}</p>`
         : "";
+    const examples = entry.examples.map((example) => `
+        <div class="example-block">
+            <span class="field-label">Example</span>
+            <p lang="fr">${escapeHtml(example.french)}</p>
+            <p>${escapeHtml(example.english)}</p>
+        </div>
+    `).join("");
 
     return `
         <article class="result-card">
@@ -34,17 +41,13 @@ function renderResult(entry) {
                     <p class="eyebrow">${escapeHtml(entry.category)}</p>
                     <h2>${escapeHtml(entry.term)}</h2>
                 </div>
-                <span class="source-badge">${escapeHtml(entry.source)}</span>
+                <span class="source-badge">Source: ${escapeHtml(entry.source)}</span>
             </div>
             <p><strong>Natural English:</strong> ${escapeHtml(entry.english)}</p>
             ${literal}
             <p><strong>Plain-English explanation:</strong> ${escapeHtml(entry.explanation)}</p>
             <p><strong>Business/CRM context:</strong> ${escapeHtml(entry.business_context)}</p>
-            <div class="example-block">
-                <span class="field-label">Example</span>
-                <p lang="fr">${escapeHtml(entry.example_fr)}</p>
-                <p>${escapeHtml(entry.example_en)}</p>
-            </div>
+            ${examples}
             ${renderRelatedTerms(entry.related_terms)}
         </article>
     `;
@@ -94,6 +97,12 @@ function handleLookup(event) {
             document.getElementById("lookup-result").innerHTML = renderNotFound(query);
             input.focus();
         });
+}
+
+function performLookup(query) {
+    const input = document.getElementById("lookup-input");
+    input.value = query;
+    document.getElementById("lookup-form").requestSubmit();
 }
 
 function renderTranslateError(message) {
@@ -190,6 +199,13 @@ document.addEventListener("DOMContentLoaded", () => {
     if (form) {
         form.addEventListener("submit", handleLookup);
     }
+
+    document.getElementById("lookup-result").addEventListener("click", (event) => {
+        const relatedTerm = event.target.closest(".related-term");
+        if (relatedTerm) {
+            performLookup(relatedTerm.dataset.query);
+        }
+    });
 
     const translateForm = document.getElementById("translate-form");
     const translateInput = document.getElementById("translate-input");

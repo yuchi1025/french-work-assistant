@@ -17,11 +17,12 @@ app = Flask(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
-BUILT_IN_GLOSSARY_PATHS = (
-    DATA_DIR / "workplace_glossary.json",
-    DATA_DIR / "crm_glossary.json",
-)
 CUSTOM_GLOSSARY_PATH = DATA_DIR / "custom_glossary.json"
+GLOSSARY_SOURCES = (
+    ("Workplace", DATA_DIR / "workplace_glossary.json", 1),
+    ("CRM", DATA_DIR / "crm_glossary.json", 2),
+    ("Custom", CUSTOM_GLOSSARY_PATH, 3),
+)
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434/api/chat")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma3")
 OLLAMA_KEEP_ALIVE = os.getenv("OLLAMA_KEEP_ALIVE", "15m")
@@ -30,17 +31,7 @@ MAX_TRANSLATE_TEXT_LENGTH = 6000
 TRANSLATE_CACHE_LIMIT = 64
 TRANSLATE_EXPLAIN_CACHE = {}
 
-REQUIRED_FIELDS = (
-    "term",
-    "english",
-    "literal",
-    "category",
-    "explanation",
-    "business_context",
-    "example_fr",
-    "example_en",
-    "related_terms",
-)
+REQUIRED_GLOSSARY_TEXT_FIELDS = ("term", "english", "category", "explanation", "business_context")
 
 AI_REQUIRED_FIELDS = {
     "natural_english_translation",
@@ -52,6 +43,10 @@ AI_REQUIRED_FIELDS = {
 AI_VOCABULARY_FIELDS = {"french", "english", "explanation"}
 
 
+class GlossaryValidationError(ValueError):
+    """Raised when a glossary file does not match the supported public schema."""
+
+
 def normalize_text(value):
     text = unicodedata.normalize("NFKC", str(value or "")).strip().lower()
     text = text.replace("’", "'")
@@ -60,18 +55,54 @@ def normalize_text(value):
     return re.sub(r"\s+", " ", text)
 
 
-def normalize_entry(raw_entry, source):
-    entry = {field: raw_entry.get(field, "") for field in REQUIRED_FIELDS}
-    entry["term"] = str(entry["term"]).strip()
-    entry["english"] = str(entry["english"]).strip()
-    entry["literal"] = str(entry["literal"]).strip()
-    entry["category"] = str(entry["category"]).strip()
-    entry["explanation"] = str(entry["explanation"]).strip()
-    entry["business_context"] = str(entry["business_context"]).strip()
-    entry["example_fr"] = str(entry["example_fr"]).strip()
-    entry["example_en"] = str(entry["example_en"]).strip()
-    entry["related_terms"] = [str(term).strip() for term in entry["related_terms"] if str(term).strip()]
+def validate_glossary_entry(raw_entry, source, index):
+    if not isinstance(raw_entry, dict):
+        raise GlossaryValidationError(f"{source} glossary entry {index} must be an object.")
+
+    entry = dict(raw_entry)
+    # Support the v0 shape while canonicalizing it to the documented schema.
+    if "literal_translation" not in entry and "literal" in entry:
+        entry["literal_translation"] = entry["literal"]
+    if "examples" not in entry and "example_fr" in entry and "example_en" in entry:
+        entry["examples"] = [{"french": entry["example_fr"], "english": entry["example_en"]}]
+
+    for field in REQUIRED_GLOSSARY_TEXT_FIELDS:
+        if not isinstance(entry.get(field), str) or not entry[field].strip():
+            raise GlossaryValidationError(f"{source} glossary entry {index} has an invalid {field} field.")
+    if not isinstance(entry.get("literal_translation", ""), str):
+        raise GlossaryValidationError(f"{source} glossary entry {index} has an invalid literal_translation field.")
+    if not isinstance(entry.get("related_terms"), list) or any(
+        not isinstance(term, str) or not term.strip() for term in entry["related_terms"]
+    ):
+        raise GlossaryValidationError(f"{source} glossary entry {index} has invalid related_terms.")
+    if not isinstance(entry.get("examples"), list) or not entry["examples"]:
+        raise GlossaryValidationError(f"{source} glossary entry {index} must include at least one example.")
+
+    examples = []
+    for example in entry["examples"]:
+        if not isinstance(example, dict) or set(example) != {"french", "english"}:
+            raise GlossaryValidationError(f"{source} glossary entry {index} has an invalid example.")
+        if any(not isinstance(example[field], str) or not example[field].strip() for field in ("french", "english")):
+            raise GlossaryValidationError(f"{source} glossary entry {index} has an invalid example.")
+        examples.append({field: example[field].strip() for field in ("french", "english")})
+
+    return {
+        "term": entry["term"].strip(),
+        "english": entry["english"].strip(),
+        "literal_translation": entry.get("literal_translation", "").strip(),
+        "category": entry["category"].strip(),
+        "explanation": entry["explanation"].strip(),
+        "business_context": entry["business_context"].strip(),
+        "examples": examples,
+        "related_terms": [term.strip() for term in entry["related_terms"]],
+    }
+
+
+def normalize_entry(raw_entry, source, precedence, index):
+    entry = validate_glossary_entry(raw_entry, source, index)
     entry["source"] = source
+    entry["domain"] = source
+    entry["precedence"] = precedence
     entry["search_terms"] = build_search_terms(entry)
     return entry
 
@@ -80,28 +111,43 @@ def build_search_terms(entry):
     candidates = [
         entry["term"],
         entry["english"],
-        entry["literal"],
+        entry["literal_translation"],
         *entry["related_terms"],
     ]
     return sorted({normalize_text(candidate) for candidate in candidates if normalize_text(candidate)})
 
 
-def load_glossary_file(path, source):
-    with path.open(encoding="utf-8") as glossary_file:
-        raw_entries = json.load(glossary_file)
+def load_glossary_file(path, source, precedence):
+    try:
+        with path.open(encoding="utf-8") as glossary_file:
+            raw_entries = json.load(glossary_file)
+    except (OSError, json.JSONDecodeError) as exc:
+        if source == "Custom":
+            raise GlossaryValidationError("Custom glossary is invalid. Check its JSON structure and schema.") from exc
+        raise GlossaryValidationError(f"{source} glossary could not be loaded: {exc}") from exc
 
-    return [normalize_entry(raw_entry, source) for raw_entry in raw_entries if raw_entry.get("term")]
+    if not isinstance(raw_entries, list):
+        message = "Custom glossary must contain a JSON array." if source == "Custom" else f"{source} glossary must contain a JSON array."
+        raise GlossaryValidationError(message)
+
+    entries = [normalize_entry(raw_entry, source, precedence, index) for index, raw_entry in enumerate(raw_entries, start=1)]
+    normalized_terms = [normalize_text(entry["term"]) for entry in entries]
+    if len(normalized_terms) != len(set(normalized_terms)):
+        message = "Custom glossary has duplicate normalized terms." if source == "Custom" else f"{source} glossary has duplicate normalized terms."
+        raise GlossaryValidationError(message)
+    return entries
 
 
 def load_glossary(custom_path=CUSTOM_GLOSSARY_PATH):
     entries = []
-    for path in BUILT_IN_GLOSSARY_PATHS:
-        entries.extend(load_glossary_file(path, "built-in"))
+    for source, path, precedence in GLOSSARY_SOURCES:
+        if source == "Custom":
+            path = custom_path
+            if not path or not path.exists():
+                continue
+        entries.extend(load_glossary_file(path, source, precedence))
 
-    if custom_path and custom_path.exists():
-        entries.extend(load_glossary_file(custom_path, "custom"))
-
-    return entries
+    return sorted(entries, key=lambda entry: (-entry["precedence"], normalize_text(entry["term"])))
 
 
 def lookup_term(query, entries=None):
@@ -109,17 +155,25 @@ def lookup_term(query, entries=None):
     if not normalized_query:
         return None
 
-    glossary_entries = entries if entries is not None else load_glossary()
+    glossary_entries = entries if entries is not None else DEFAULT_GLOSSARY
 
-    for entry in glossary_entries:
+    ranked_entries = sorted(glossary_entries, key=lambda entry: (-entry["precedence"], normalize_text(entry["term"])))
+    for entry in ranked_entries:
         if normalized_query == normalize_text(entry["term"]):
             return entry
 
-    for entry in glossary_entries:
+    for entry in ranked_entries:
         if normalized_query in entry["search_terms"]:
             return entry
 
+    for entry in ranked_entries:
+        if any(normalized_query in search_term for search_term in entry["search_terms"]):
+            return entry
+
     return None
+
+
+DEFAULT_GLOSSARY = load_glossary()
 
 
 def validate_translate_explain_result(result):

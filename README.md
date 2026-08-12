@@ -27,7 +27,7 @@ Each glossary result includes:
 - English translation of the example
 - Related terms
 
-The built-in glossary uses only generic, public workplace and CRM terminology.
+Related terms are buttons: selecting one runs another Quick Lookup search. Built-in terminology is generic and public; it does not encode an organization's private CRM rules or workflow behavior.
 
 ### Translate & Explain
 
@@ -53,17 +53,53 @@ The application does not persist submitted text by default and does not delibera
 
 This repository is designed to be public.
 
-Public glossary files are committed:
+Quick Lookup has three glossary layers:
 
-- `data/workplace_glossary.json`
-- `data/crm_glossary.json`
-- `data/custom_glossary.example.json`
+- `data/workplace_glossary.json`: public, general French workplace vocabulary such as scheduling and early requirements work.
+- `data/crm_glossary.json`: public, generic CRM and sales vocabulary such as prospects, follow-ups, qualification, call outcomes, and data quality.
+- `data/custom_glossary.json`: optional local terminology for one organization. It is never required for startup and is not committed.
 
-Private local glossary data is optional and must stay local:
+When the same normalized French term appears in more than one layer, Quick Lookup chooses it deterministically in this order:
 
-- `data/custom_glossary.json`
+1. Custom
+2. CRM
+3. Workplace
 
-`data/custom_glossary.json` is gitignored and is not required for the app to run. To add private terms on your own machine, copy the example file to `data/custom_glossary.json` and edit that local file. Do not commit real customer data, private CRM notes, credentials, internal URLs, copied client communications, or company-specific confidential information.
+Quick Lookup searches French and English terms case-insensitively. It normalizes common Unicode variants and French accents, ranks exact matches before simple partial matches, and supports abbreviations such as `RDV`.
+
+`data/custom_glossary.json` is gitignored so local organization-specific terms cannot be added to a public commit by default. Create it from the safe fictional template:
+
+```bash
+cp data/custom_glossary.example.json data/custom_glossary.json
+```
+
+Do not commit real customer data, private CRM notes, credentials, internal URLs, copied client communications, or company-specific confidential information. The public example intentionally uses fictional generic content and no real organization name.
+
+### Glossary Schema And Validation
+
+New entries should use this schema:
+
+```json
+{
+  "term": "priority lead",
+  "english": "priority lead",
+  "literal_translation": "priority lead",
+  "category": "Custom workflow",
+  "explanation": "A concise explanation.",
+  "business_context": "The organization defines its exact workflow meaning.",
+  "examples": [
+    {
+      "french": "Ce priority lead doit être traité rapidement.",
+      "english": "This priority lead should be handled promptly."
+    }
+  ],
+  "related_terms": ["prospect", "relance"]
+}
+```
+
+For compatibility, the earlier `literal`, `example_fr`, and `example_en` fields are still accepted and normalized internally to `literal_translation` and `examples`.
+
+Public glossary files are validated during application startup. Invalid JSON, a non-array top level, missing or empty required strings, wrong types, malformed examples or related terms, and duplicate normalized terms within one file fail clearly. An invalid optional custom glossary also stops startup, but its error intentionally omits the file's private terms and contents.
 
 ## Technology
 
@@ -100,7 +136,8 @@ french-work-assistant/
 └── tests/
     ├── conftest.py
     ├── test_glossary.py
-    └── test_routes.py
+    ├── test_routes.py
+    └── test_translate_explain.py
 ```
 
 ## Installation
@@ -161,7 +198,7 @@ Run the test suite:
 python3 -m pytest
 ```
 
-The tests cover glossary loading, exact French lookup, case-insensitive lookup, English lookup, unknown terms, missing custom glossary behavior, temporary custom glossary loading, and the main Flask route.
+The tests cover public/custom glossary loading, strict validation, duplicate detection, source metadata, Custom > CRM > Workplace precedence, French and English lookup, Unicode/accent normalization, abbreviations, related terms, and Quick Lookup routes.
 
 They also mock the local Ollama HTTP call to cover successful structured results, invalid input, request length limits, malformed model JSON, invalid AI schemas, unavailable Ollama, and timeouts. No test needs a real Ollama server or contains non-public workplace data.
 

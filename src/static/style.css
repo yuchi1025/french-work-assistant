@@ -194,7 +194,7 @@ button:hover {
 }
 
 .source-badge,
-.related-list span {
+.related-term {
     display: inline-flex;
     align-items: center;
     min-height: 28px;
@@ -286,8 +286,17 @@ button:hover {
     gap: 8px;
 }
 
-.related-list span {
+.related-term {
     padding: 0 10px;
+    border: 0;
+    cursor: pointer;
+}
+
+.related-term:hover,
+.related-term:focus-visible {
+    background: #dcebe0;
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
 }
 
 .empty-state {
