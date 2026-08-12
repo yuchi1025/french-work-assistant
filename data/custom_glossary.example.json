@@ -1,13 +1,17 @@
 [
   {
-    "term": "example term",
-    "english": "generic English translation",
-    "literal": "optional literal translation",
-    "category": "Custom",
-    "explanation": "Plain-English explanation of the term.",
-    "business_context": "Generic context that is safe to keep on your own machine.",
-    "example_fr": "Phrase française d'exemple.",
-    "example_en": "Example English sentence.",
-    "related_terms": ["related example"]
+    "term": "priority lead",
+    "english": "priority lead",
+    "literal_translation": "priority lead",
+    "category": "Custom workflow",
+    "explanation": "A fictional example of organization-specific terminology maintained locally.",
+    "business_context": "The exact meaning should be defined by the organization that uses it.",
+    "examples": [
+      {
+        "french": "Ce priority lead doit être traité rapidement.",
+        "english": "This priority lead should be handled promptly."
+      }
+    ],
+    "related_terms": ["prospect", "relance"]
   }
 ]
