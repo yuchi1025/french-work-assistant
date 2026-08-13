@@ -19,6 +19,7 @@
         <div class="mode-tabs" role="tablist" aria-label="Assistant mode">
             <button class="mode-tab is-active" id="lookup-tab" type="button" role="tab" aria-selected="true" aria-controls="lookup-mode">Quick Lookup</button>
             <button class="mode-tab" id="translate-tab" type="button" role="tab" aria-selected="false" aria-controls="translate-mode">Translate &amp; Explain</button>
+            <button class="mode-tab" id="saved-tab" type="button" role="tab" aria-selected="false" aria-controls="saved-mode">Saved Terms</button>
         </div>
 
         <section class="lookup-panel mode-panel" id="lookup-mode" role="tabpanel" aria-labelledby="lookup-tab">
@@ -56,8 +57,31 @@
             </form>
         </section>
 
+        <section class="lookup-panel mode-panel" id="saved-mode" role="tabpanel" aria-labelledby="saved-tab" hidden>
+            <div class="panel-header saved-header">
+                <div>
+                    <h2>Saved Terms</h2>
+                    <p>Your local terminology history. <span id="saved-total">0 saved terms</span></p>
+                </div>
+            </div>
+            <form class="saved-controls" id="saved-search-form">
+                <label class="sr-only" for="saved-search">Search saved terms</label>
+                <input id="saved-search" type="search" placeholder="Search French or English" autocomplete="off">
+                <label class="sr-only" for="saved-source-filter">Filter by source</label>
+                <select id="saved-source-filter">
+                    <option value="">All sources</option>
+                    <option value="Workplace">Workplace</option>
+                    <option value="CRM">CRM</option>
+                    <option value="Custom">Custom</option>
+                    <option value="AI">AI</option>
+                </select>
+                <button type="submit">Search</button>
+            </form>
+        </section>
+
         <section id="lookup-result" class="result-region" aria-live="polite"></section>
         <section id="translate-result" class="result-region" aria-live="polite" hidden></section>
+        <section id="saved-result" class="result-region" aria-live="polite" hidden></section>
     </main>
 
     <script src="{{ url_for('static', filename='app.js') }}"></script>

@@ -6,7 +6,7 @@ Current version: `v0.1`
 
 ## What It Does
 
-The app provides two local-first modes.
+The app provides three local-first modes.
 
 ### Quick Lookup
 
@@ -43,11 +43,19 @@ For example, a generic input such as `Lorsqu'un prospect est marqué comme hors 
 
 Translate & Explain accepts up to `6,000` characters per request, which is intended for a workplace paragraph or a compact requirement. It does not save submitted text to files, databases, or history. Successful results may remain in a bounded in-memory cache for the lifetime of the running process only; restarting the app clears it.
 
+### Saved Terms
+
+Save individual terms you want to keep from Quick Lookup or the Important Vocabulary section of Translate & Explain. Saving is always explicit: the app never saves a Quick Lookup result, AI vocabulary item, translated input, or AI response automatically.
+
+Saved Terms provides a private local list with a total count, French/English search, source filtering, newest-first ordering, and deletion. Deleting a saved term removes only that personal-history row. It never changes a public glossary file or a local custom glossary.
+
 ## Local-First Privacy
 
 Translate & Explain sends text only to a local Ollama server at `OLLAMA_URL`, which defaults to `http://127.0.0.1:11434/api/chat`. The application accepts only loopback Ollama URLs such as `localhost`, `127.0.0.1`, or `::1`; a remote host is rejected. It does not call OpenAI, Google, DeepL, external translation services, analytics providers, or remote AI APIs.
 
 The application does not persist submitted text by default and does not deliberately log submitted text. Still, use a locally managed Ollama installation and follow your organization's data-handling policy before pasting sensitive material. Never commit private workplace text, customer data, internal URLs, credentials, or confidential requirements to this public repository.
+
+Saved Terms is stored locally in `data/saved_terms.db`, a gitignored SQLite database. It stores only the individual terms you explicitly save: French, English, optional literal translation, category, explanation, business context, source, and a timestamp. It does not store full Translate & Explain input or full AI responses. The database has a unique normalized French-term key, so saving the same term again reports `Already saved` instead of creating a duplicate.
 
 ## Public And Private Data
 
@@ -101,6 +109,8 @@ For compatibility, the earlier `literal`, `example_fr`, and `example_en` fields 
 
 Public glossary files are validated during application startup. Invalid JSON, a non-array top level, missing or empty required strings, wrong types, malformed examples or related terms, and duplicate normalized terms within one file fail clearly. An invalid optional custom glossary also stops startup, but its error intentionally omits the file's private terms and contents.
 
+Static glossary data is public reference terminology. `data/saved_terms.db` is separate private personal history and must not be committed.
+
 ## Technology
 
 - Python
@@ -109,9 +119,10 @@ Public glossary files are validated during application startup. Invalid JSON, a 
 - CSS
 - Vanilla JavaScript
 - Ollama for optional local AI processing
+- SQLite for private Saved Terms history
 - pytest
 
-There is no authentication, database, deployment configuration, remote AI integration, or saved history.
+There is no authentication, cloud sync, remote database, deployment configuration, or remote AI integration.
 
 ## Project Structure
 
@@ -132,7 +143,8 @@ french-work-assistant/
 ├── data/
 │   ├── workplace_glossary.json
 │   ├── crm_glossary.json
-│   └── custom_glossary.example.json
+│   ├── custom_glossary.example.json
+│   └── saved_terms.db (local, gitignored, created when needed)
 └── tests/
     ├── conftest.py
     ├── test_glossary.py
@@ -200,10 +212,10 @@ python3 -m pytest
 
 The tests cover public/custom glossary loading, strict validation, duplicate detection, source metadata, Custom > CRM > Workplace precedence, French and English lookup, Unicode/accent normalization, abbreviations, related terms, and Quick Lookup routes.
 
-They also mock the local Ollama HTTP call to cover successful structured results, invalid input, request length limits, malformed model JSON, invalid AI schemas, unavailable Ollama, and timeouts. No test needs a real Ollama server or contains non-public workplace data.
+They also use temporary SQLite files to cover Saved Terms initialization, explicit glossary/AI saves, duplicate prevention, listing, search, filters, ordering, deletion, and invalid requests. The AI tests mock the local Ollama HTTP call to cover successful structured results, invalid input, request length limits, malformed model JSON, invalid AI schemas, unavailable Ollama, and timeouts. No test needs a real Ollama server, real saved-terms database, or non-public workplace data.
 
 ## Limitations
 
 - Translate & Explain depends on a locally installed Ollama model and may return an error while Ollama is stopped, still loading, or produces invalid JSON.
 - Model explanations are assistance, not an authoritative source of business requirements. Check ambiguous wording with the French-speaking author or product owner.
-- This version intentionally has no saved history, custom translation memory, remote AI APIs, authentication, or deployment configuration.
+- This version intentionally has no cloud sync, custom translation memory, remote AI APIs, authentication, or deployment configuration.

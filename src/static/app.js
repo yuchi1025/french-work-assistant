@@ -49,6 +49,10 @@ function renderResult(entry) {
             <p><strong>Business/CRM context:</strong> ${escapeHtml(entry.business_context)}</p>
             ${examples}
             ${renderRelatedTerms(entry.related_terms)}
+            <div class="save-actions">
+                <button type="button" class="save-term-button save-glossary-term" data-term="${escapeHtml(entry.term)}">Save term</button>
+                <span class="save-feedback" aria-live="polite"></span>
+            </div>
         </article>
     `;
 }
@@ -123,6 +127,10 @@ function renderVocabulary(vocabulary) {
                         <h4>${escapeHtml(item.french)}</h4>
                         <p><strong>${escapeHtml(item.english)}</strong></p>
                         <p>${escapeHtml(item.explanation)}</p>
+                        <div class="save-actions">
+                            <button type="button" class="save-term-button save-ai-term" data-french="${escapeHtml(item.french)}" data-english="${escapeHtml(item.english)}" data-explanation="${escapeHtml(item.explanation)}">Save term</button>
+                            <span class="save-feedback" aria-live="polite"></span>
+                        </div>
                     </article>
                 `).join("")}
             </div>
@@ -184,14 +192,131 @@ function handleTranslate(event) {
 
 function setActiveMode(mode) {
     const lookupIsActive = mode === "lookup";
+    const translateIsActive = mode === "translate";
+    const savedIsActive = mode === "saved";
     document.getElementById("lookup-tab").classList.toggle("is-active", lookupIsActive);
     document.getElementById("lookup-tab").setAttribute("aria-selected", String(lookupIsActive));
-    document.getElementById("translate-tab").classList.toggle("is-active", !lookupIsActive);
-    document.getElementById("translate-tab").setAttribute("aria-selected", String(!lookupIsActive));
+    document.getElementById("translate-tab").classList.toggle("is-active", translateIsActive);
+    document.getElementById("translate-tab").setAttribute("aria-selected", String(translateIsActive));
+    document.getElementById("saved-tab").classList.toggle("is-active", savedIsActive);
+    document.getElementById("saved-tab").setAttribute("aria-selected", String(savedIsActive));
     document.getElementById("lookup-mode").hidden = !lookupIsActive;
-    document.getElementById("translate-mode").hidden = lookupIsActive;
+    document.getElementById("translate-mode").hidden = !translateIsActive;
+    document.getElementById("saved-mode").hidden = !savedIsActive;
     document.getElementById("lookup-result").hidden = !lookupIsActive;
-    document.getElementById("translate-result").hidden = lookupIsActive;
+    document.getElementById("translate-result").hidden = !translateIsActive;
+    document.getElementById("saved-result").hidden = !savedIsActive;
+    if (savedIsActive) {
+        loadSavedTerms();
+    }
+}
+
+function setSaveFeedback(button, message, saved) {
+    const feedback = button.parentElement.querySelector(".save-feedback");
+    button.disabled = saved;
+    if (saved) {
+        button.textContent = message;
+    }
+    feedback.textContent = saved ? "" : message;
+}
+
+function saveTerm(button, payload) {
+    button.disabled = true;
+    fetch("/api/saved-terms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+    })
+        .then((response) => response.json().then((data) => ({ status: response.status, data })))
+        .then(({ data }) => {
+            if (data.ok) {
+                setSaveFeedback(button, data.message, true);
+            } else {
+                button.disabled = false;
+                setSaveFeedback(button, data.error || "Unable to save term.", false);
+            }
+        })
+        .catch(() => {
+            button.disabled = false;
+            setSaveFeedback(button, "Unable to save term.", false);
+        });
+}
+
+function formatSavedDate(value) {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? "Saved locally" : date.toLocaleString();
+}
+
+function renderSavedTerms(terms, total) {
+    document.getElementById("saved-total").textContent = `${total} saved term${total === 1 ? "" : "s"}`;
+    if (!terms.length) {
+        return `<article class="empty-state"><h2>No saved terms</h2><p>Save a term from Quick Lookup or Translate &amp; Explain to find it here.</p></article>`;
+    }
+
+    return `
+        <div class="saved-list">
+            ${terms.map((term) => `
+                <article class="saved-term-card">
+                    <div class="saved-term-header">
+                        <div>
+                            <h3>${escapeHtml(term.french)}</h3>
+                            <p><strong>${escapeHtml(term.english)}</strong></p>
+                        </div>
+                        <span class="source-badge">Source: ${escapeHtml(term.source)}</span>
+                    </div>
+                    ${term.category ? `<p><strong>Category:</strong> ${escapeHtml(term.category)}</p>` : ""}
+                    <p class="saved-date">Saved ${escapeHtml(formatSavedDate(term.saved_at))}</p>
+                    <button type="button" class="delete-term-button" data-id="${term.id}" data-term="${escapeHtml(term.french)}">Delete</button>
+                </article>
+            `).join("")}
+        </div>
+    `;
+}
+
+function loadSavedTerms(event) {
+    if (event) {
+        event.preventDefault();
+    }
+    const query = document.getElementById("saved-search").value.trim();
+    const source = document.getElementById("saved-source-filter").value;
+    const result = document.getElementById("saved-result");
+    result.innerHTML = `<article class="empty-state"><p>Loading saved terms...</p></article>`;
+    const parameters = new URLSearchParams();
+    if (query) {
+        parameters.set("q", query);
+    }
+    if (source) {
+        parameters.set("source", source);
+    }
+
+    fetch(`/api/saved-terms?${parameters.toString()}`)
+        .then((response) => response.json().then((data) => ({ status: response.status, data })))
+        .then(({ data }) => {
+            result.innerHTML = data.ok ? renderSavedTerms(data.terms, data.total) : renderTranslateError(data.error || "Unable to load saved terms.");
+        })
+        .catch(() => {
+            result.innerHTML = renderTranslateError("Unable to load saved terms.");
+        });
+}
+
+function deleteSavedTerm(button) {
+    const term = button.dataset.term;
+    if (!window.confirm(`Delete "${term}" from Saved Terms?`)) {
+        return;
+    }
+    button.disabled = true;
+    fetch(`/api/saved-terms/${button.dataset.id}`, { method: "DELETE" })
+        .then((response) => response.json().then((data) => ({ status: response.status, data })))
+        .then(({ data }) => {
+            if (data.ok) {
+                loadSavedTerms();
+            } else {
+                button.disabled = false;
+            }
+        })
+        .catch(() => {
+            button.disabled = false;
+        });
 }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -204,6 +329,22 @@ document.addEventListener("DOMContentLoaded", () => {
         const relatedTerm = event.target.closest(".related-term");
         if (relatedTerm) {
             performLookup(relatedTerm.dataset.query);
+        }
+        const glossaryButton = event.target.closest(".save-glossary-term");
+        if (glossaryButton) {
+            saveTerm(glossaryButton, { kind: "glossary", term: glossaryButton.dataset.term });
+        }
+    });
+
+    document.getElementById("translate-result").addEventListener("click", (event) => {
+        const aiButton = event.target.closest(".save-ai-term");
+        if (aiButton) {
+            saveTerm(aiButton, {
+                kind: "ai_vocabulary",
+                french: aiButton.dataset.french,
+                english: aiButton.dataset.english,
+                explanation: aiButton.dataset.explanation,
+            });
         }
     });
 
@@ -218,4 +359,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
     document.getElementById("lookup-tab").addEventListener("click", () => setActiveMode("lookup"));
     document.getElementById("translate-tab").addEventListener("click", () => setActiveMode("translate"));
+    document.getElementById("saved-tab").addEventListener("click", () => setActiveMode("saved"));
+    document.getElementById("saved-search-form").addEventListener("submit", loadSavedTerms);
+    document.getElementById("saved-source-filter").addEventListener("change", loadSavedTerms);
+    document.getElementById("saved-result").addEventListener("click", (event) => {
+        const deleteButton = event.target.closest(".delete-term-button");
+        if (deleteButton) {
+            deleteSavedTerm(deleteButton);
+        }
+    });
 });

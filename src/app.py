@@ -4,11 +4,13 @@ import json
 import os
 import re
 import socket
+import sqlite3
 import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
+from datetime import datetime, timezone
 
 from flask import Flask, jsonify, render_template, request
 
@@ -30,6 +32,10 @@ OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "45"))
 MAX_TRANSLATE_TEXT_LENGTH = 6000
 TRANSLATE_CACHE_LIMIT = 64
 TRANSLATE_EXPLAIN_CACHE = {}
+SAVED_TERMS_DB_PATH = DATA_DIR / "saved_terms.db"
+SAVED_TERM_SOURCES = {"Workplace", "CRM", "Custom", "AI"}
+MAX_SAVED_TERM_LENGTH = 160
+MAX_SAVED_TEXT_LENGTH = 2000
 
 REQUIRED_GLOSSARY_TEXT_FIELDS = ("term", "english", "category", "explanation", "business_context")
 
@@ -174,6 +180,135 @@ def lookup_term(query, entries=None):
 
 
 DEFAULT_GLOSSARY = load_glossary()
+
+
+def get_saved_terms_db_path():
+    return Path(app.config.get("SAVED_TERMS_DB_PATH", SAVED_TERMS_DB_PATH))
+
+
+def init_saved_terms_db(db_path=None):
+    path = Path(db_path) if db_path else get_saved_terms_db_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS saved_terms (
+                id INTEGER PRIMARY KEY,
+                normalized_term TEXT NOT NULL UNIQUE,
+                french TEXT NOT NULL,
+                english TEXT NOT NULL,
+                literal_translation TEXT NOT NULL DEFAULT '',
+                category TEXT NOT NULL DEFAULT '',
+                explanation TEXT NOT NULL,
+                business_context TEXT NOT NULL DEFAULT '',
+                source TEXT NOT NULL,
+                saved_at TEXT NOT NULL
+            )
+            """
+        )
+
+
+def connect_saved_terms_db():
+    db_path = get_saved_terms_db_path()
+    init_saved_terms_db(db_path)
+    connection = sqlite3.connect(db_path)
+    connection.row_factory = sqlite3.Row
+    return connection
+
+
+def validate_saved_text(value, field, required=True, limit=MAX_SAVED_TEXT_LENGTH):
+    if not isinstance(value, str):
+        return None
+    clean_value = value.strip()
+    if (required and not clean_value) or len(clean_value) > limit:
+        return None
+    return clean_value
+
+
+def build_saved_term_from_glossary(term):
+    clean_term = validate_saved_text(term, "term", limit=MAX_SAVED_TERM_LENGTH)
+    if clean_term is None:
+        return None
+    entry = lookup_term(clean_term)
+    if entry is None:
+        return None
+    return {
+        "normalized_term": normalize_text(entry["term"]),
+        "french": entry["term"],
+        "english": entry["english"],
+        "literal_translation": entry["literal_translation"],
+        "category": entry["category"],
+        "explanation": entry["explanation"],
+        "business_context": entry["business_context"],
+        "source": entry["source"],
+    }
+
+
+def build_saved_term_from_ai(payload):
+    french = validate_saved_text(payload.get("french"), "french", limit=MAX_SAVED_TERM_LENGTH)
+    english = validate_saved_text(payload.get("english"), "english")
+    explanation = validate_saved_text(payload.get("explanation"), "explanation")
+    if not all((french, english, explanation)):
+        return None
+    return {
+        "normalized_term": normalize_text(french),
+        "french": french,
+        "english": english,
+        "literal_translation": "",
+        "category": "",
+        "explanation": explanation,
+        "business_context": "",
+        "source": "AI",
+    }
+
+
+def save_term(saved_term):
+    saved_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    values = {**saved_term, "saved_at": saved_at}
+    try:
+        with connect_saved_terms_db() as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO saved_terms (
+                    normalized_term, french, english, literal_translation, category,
+                    explanation, business_context, source, saved_at
+                ) VALUES (
+                    :normalized_term, :french, :english, :literal_translation, :category,
+                    :explanation, :business_context, :source, :saved_at
+                )
+                """,
+                values,
+            )
+            saved_id = cursor.lastrowid
+    except sqlite3.IntegrityError:
+        return None, False
+    return saved_id, True
+
+
+def list_saved_terms(query="", source=""):
+    conditions = []
+    parameters = []
+    if query:
+        conditions.append("(french LIKE ? COLLATE NOCASE OR english LIKE ? COLLATE NOCASE)")
+        search_query = f"%{query}%"
+        parameters.extend((search_query, search_query))
+    if source:
+        conditions.append("source = ?")
+        parameters.append(source)
+    where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    with connect_saved_terms_db() as connection:
+        rows = connection.execute(
+            f"SELECT * FROM saved_terms {where_clause} ORDER BY saved_at DESC, id DESC",
+            parameters,
+        ).fetchall()
+        total = connection.execute("SELECT COUNT(*) FROM saved_terms").fetchone()[0]
+    return [dict(row) for row in rows], total
+
+
+def delete_saved_term(term_id):
+    with connect_saved_terms_db() as connection:
+        cursor = connection.execute("DELETE FROM saved_terms WHERE id = ?", (term_id,))
+    return cursor.rowcount > 0
 
 
 def validate_translate_explain_result(result):
@@ -326,6 +461,54 @@ def api_translate_explain():
         return jsonify({"ok": False, "error": error}), 503 if "unavailable" in error else 502
 
     return jsonify({"ok": True, "result": result})
+
+
+@app.route("/api/saved-terms", methods=["GET"])
+def api_list_saved_terms():
+    query = request.args.get("q", "").strip()
+    source = request.args.get("source", "").strip()
+    if len(query) > MAX_SAVED_TERM_LENGTH:
+        return jsonify({"ok": False, "error": "Search text is too long."}), 400
+    if source and source not in SAVED_TERM_SOURCES:
+        return jsonify({"ok": False, "error": "Invalid source filter."}), 400
+
+    terms, total = list_saved_terms(query=query, source=source)
+    return jsonify({"ok": True, "terms": terms, "total": total})
+
+
+@app.route("/api/saved-terms", methods=["POST"])
+def api_save_term():
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict) or payload.get("kind") not in {"glossary", "ai_vocabulary"}:
+        return jsonify({"ok": False, "error": "Request must identify a glossary term or AI vocabulary item."}), 400
+
+    if payload["kind"] == "glossary":
+        if set(payload) != {"kind", "term"}:
+            return jsonify({"ok": False, "error": "Invalid glossary save request."}), 400
+        saved_term = build_saved_term_from_glossary(payload["term"])
+        if saved_term is None:
+            return jsonify({"ok": False, "error": "The glossary term could not be saved."}), 400
+    else:
+        if set(payload) != {"kind", "french", "english", "explanation"}:
+            return jsonify({"ok": False, "error": "Invalid AI vocabulary save request."}), 400
+        saved_term = build_saved_term_from_ai(payload)
+        if saved_term is None:
+            return jsonify({"ok": False, "error": "The AI vocabulary item could not be saved."}), 400
+
+    saved_id, created = save_term(saved_term)
+    if not created:
+        return jsonify({"ok": True, "saved": False, "message": "Already saved."})
+    return jsonify({"ok": True, "saved": True, "id": saved_id, "message": "Saved."}), 201
+
+
+@app.route("/api/saved-terms/<term_id>", methods=["DELETE"])
+def api_delete_saved_term(term_id):
+    if not term_id.isdigit() or int(term_id) < 1:
+        return jsonify({"ok": False, "error": "Invalid saved term id."}), 400
+    term_id = int(term_id)
+    if not delete_saved_term(term_id):
+        return jsonify({"ok": False, "error": "Saved term not found."}), 404
+    return jsonify({"ok": True})
 
 
 if __name__ == "__main__":
