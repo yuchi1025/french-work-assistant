@@ -4,6 +4,7 @@ __pycache__/
 .env
 data/custom_glossary.json
 data/*.db
+data/saved_terms.db
 .pytest_cache/
 .coverage
 htmlcov/
