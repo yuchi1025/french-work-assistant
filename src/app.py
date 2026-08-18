@@ -47,6 +47,14 @@ AI_REQUIRED_FIELDS = {
     "developer_interpretation",
 }
 AI_VOCABULARY_FIELDS = {"french", "english", "explanation"}
+DEVELOPER_MODE_FIELDS = {
+    "translation",
+    "explicit_requirements",
+    "implementation_notes",
+    "important_vocabulary",
+    "ambiguities",
+}
+MAX_DEVELOPER_LIST_ITEMS = 12
 
 
 class GlossaryValidationError(ValueError):
@@ -344,6 +352,49 @@ def validate_translate_explain_result(result):
     }
 
 
+def validate_string_list(value, limit):
+    if not isinstance(value, list) or len(value) > limit:
+        return None
+    if any(not isinstance(item, str) or not item.strip() for item in value):
+        return None
+    return [item.strip() for item in value]
+
+
+def validate_important_vocabulary(vocabulary):
+    if not isinstance(vocabulary, list) or len(vocabulary) > MAX_DEVELOPER_LIST_ITEMS:
+        return None
+    clean_vocabulary = []
+    for item in vocabulary:
+        if not isinstance(item, dict) or set(item) != AI_VOCABULARY_FIELDS:
+            return None
+        if any(not isinstance(item[field], str) or not item[field].strip() for field in AI_VOCABULARY_FIELDS):
+            return None
+        clean_vocabulary.append({field: item[field].strip() for field in AI_VOCABULARY_FIELDS})
+    return clean_vocabulary
+
+
+def validate_developer_mode_result(result):
+    if not isinstance(result, dict) or set(result) != DEVELOPER_MODE_FIELDS:
+        return None
+    if not isinstance(result["translation"], str) or not result["translation"].strip():
+        return None
+
+    explicit_requirements = validate_string_list(result["explicit_requirements"], MAX_DEVELOPER_LIST_ITEMS)
+    implementation_notes = validate_string_list(result["implementation_notes"], MAX_DEVELOPER_LIST_ITEMS)
+    ambiguities = validate_string_list(result["ambiguities"], MAX_DEVELOPER_LIST_ITEMS)
+    vocabulary = validate_important_vocabulary(result["important_vocabulary"])
+    if any(value is None for value in (explicit_requirements, implementation_notes, ambiguities, vocabulary)):
+        return None
+
+    return {
+        "translation": result["translation"].strip(),
+        "explicit_requirements": explicit_requirements,
+        "implementation_notes": implementation_notes,
+        "important_vocabulary": vocabulary,
+        "ambiguities": ambiguities,
+    }
+
+
 def build_translate_cache_key(text):
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
@@ -360,23 +411,10 @@ def is_local_ollama_url(url):
         return False
 
 
-def fetch_translate_explain(text):
+def fetch_structured_ollama(system_prompt, text):
     if not is_local_ollama_url(OLLAMA_URL):
         return None, "Local Ollama is unavailable. Configure OLLAMA_URL with a loopback address."
 
-    system_prompt = (
-        "You are a French workplace-language assistant for English-speaking software developers. "
-        "Translate French text naturally and explain only what is supported by the text. "
-        "Return JSON only, with exactly these keys: natural_english_translation, "
-        "plain_english_meaning, business_crm_context, important_vocabulary, developer_interpretation. "
-        "natural_english_translation and plain_english_meaning must be concise non-empty English strings. "
-        "business_crm_context must be a concise English string when meaningful workplace, CRM, sales, or product "
-        "context is present; otherwise null. important_vocabulary must be a JSON array of at most 12 useful terms. "
-        "Each term must have exactly french, english, and explanation as non-empty strings. "
-        "developer_interpretation must be a concise English string only when the text implies software behavior, "
-        "workflow, status handling, permissions, UI behavior, or implementation requirements; otherwise null. "
-        "Do not invent business context, requirements, policies, names, or facts not present in the source text."
-    )
     payload = {
         "model": OLLAMA_MODEL,
         "stream": False,
@@ -406,6 +444,27 @@ def fetch_translate_explain(text):
     except (json.JSONDecodeError, KeyError, TypeError):
         return None, "Local Ollama returned an invalid structured response. Please try again."
 
+    return parsed_result, None
+
+
+def fetch_translate_explain(text):
+    system_prompt = (
+        "You are a French workplace-language assistant for English-speaking software developers. "
+        "Translate French text naturally and explain only what is supported by the text. "
+        "Return JSON only, with exactly these keys: natural_english_translation, "
+        "plain_english_meaning, business_crm_context, important_vocabulary, developer_interpretation. "
+        "natural_english_translation and plain_english_meaning must be concise non-empty English strings. "
+        "business_crm_context must be a concise English string when meaningful workplace, CRM, sales, or product "
+        "context is present; otherwise null. important_vocabulary must be a JSON array of at most 12 useful terms. "
+        "Each term must have exactly french, english, and explanation as non-empty strings. "
+        "developer_interpretation must be a concise English string only when the text implies software behavior, "
+        "workflow, status handling, permissions, UI behavior, or implementation requirements; otherwise null. "
+        "Do not invent business context, requirements, policies, names, or facts not present in the source text."
+    )
+    parsed_result, error = fetch_structured_ollama(system_prompt, text)
+    if error:
+        return None, error
+
     validated_result = validate_translate_explain_result(parsed_result)
     if validated_result is None:
         return None, "Local Ollama returned an invalid structured response. Please try again."
@@ -425,6 +484,33 @@ def get_translate_explain(text):
             TRANSLATE_EXPLAIN_CACHE.pop(next(iter(TRANSLATE_EXPLAIN_CACHE)))
         TRANSLATE_EXPLAIN_CACHE[cache_key] = result
     return result, error
+
+
+def fetch_developer_mode(text):
+    system_prompt = (
+        "You are a French requirements interpretation assistant for English-speaking software developers. "
+        "Translate the French source naturally. Return JSON only with exactly these keys: translation, "
+        "explicit_requirements, implementation_notes, important_vocabulary, ambiguities. "
+        "translation must be a concise non-empty English string. explicit_requirements must contain only rules "
+        "the French source explicitly states or directly expresses linguistically. Never add implementation assumptions "
+        "there. implementation_notes must contain only reasonable developer-oriented interpretations or suggestions; "
+        "they are not confirmed requirements. ambiguities must contain only source-specific questions that need "
+        "clarification, not generic filler. important_vocabulary must contain at most 12 objects with exactly french, "
+        "english, and explanation as non-empty strings. Each array must contain at most 12 concise strings or objects. "
+        "Never invent company policies, permissions, statuses, workflows, or facts. Surface uncertainty in ambiguities."
+    )
+    parsed_result, error = fetch_structured_ollama(system_prompt, text)
+    if error:
+        return None, error
+
+    validated_result = validate_developer_mode_result(parsed_result)
+    if validated_result is None:
+        return None, "Local Ollama returned an invalid structured response. Please try again."
+    return validated_result, None
+
+
+def get_developer_mode(text):
+    return fetch_developer_mode(text)
 
 
 @app.route("/", methods=["GET"])
@@ -457,6 +543,25 @@ def api_translate_explain():
         return jsonify({"ok": False, "error": f"Text must be {MAX_TRANSLATE_TEXT_LENGTH:,} characters or fewer."}), 413
 
     result, error = get_translate_explain(text)
+    if error:
+        return jsonify({"ok": False, "error": error}), 503 if "unavailable" in error else 502
+
+    return jsonify({"ok": True, "result": result})
+
+
+@app.route("/api/developer-mode", methods=["POST"])
+def api_developer_mode():
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict) or not isinstance(payload.get("text"), str):
+        return jsonify({"ok": False, "error": "Request must be JSON with a text string."}), 400
+
+    text = payload["text"].strip()
+    if not text:
+        return jsonify({"ok": False, "error": "Enter French text to interpret for development."}), 400
+    if len(text) > MAX_TRANSLATE_TEXT_LENGTH:
+        return jsonify({"ok": False, "error": f"Text must be {MAX_TRANSLATE_TEXT_LENGTH:,} characters or fewer."}), 413
+
+    result, error = get_developer_mode(text)
     if error:
         return jsonify({"ok": False, "error": error}), 503 if "unavailable" in error else 502
 

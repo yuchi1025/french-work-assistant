@@ -6,7 +6,7 @@ Current version: `v0.1`
 
 ## What It Does
 
-The app provides three local-first modes.
+The app provides four local-first modes.
 
 ### Quick Lookup
 
@@ -49,9 +49,23 @@ Save individual terms you want to keep from Quick Lookup or the Important Vocabu
 
 Saved Terms provides a private local list with a total count, French/English search, source filtering, newest-first ordering, and deletion. Deleting a saved term removes only that personal-history row. It never changes a public glossary file or a local custom glossary.
 
+### Developer Mode
+
+Developer Mode helps interpret French requirements, CRM behavior, UI feedback, workflow descriptions, and issue text for implementation work. Paste a French paragraph and it returns:
+
+- Natural English Translation
+- Explicit Requirements: only what the French source states directly
+- Implementation Notes (Interpretations): reasonable technical considerations, not confirmed requirements
+- Important Vocabulary: individual terms that can be explicitly saved to Saved Terms
+- Ambiguities / Questions: source-specific decisions that need clarification
+
+For example, a generic rule that a prospect marked `hors cible` must no longer appear in an active list becomes an explicit requirement. A suggestion to enforce that exclusion in backend queries as well as the UI belongs in Implementation Notes, because the source did not explicitly specify that implementation detail.
+
+Developer Mode never saves submitted text, complete results, requirement lists, implementation notes, or ambiguity lists. It uses the same local Ollama integration and input limit as Translate & Explain. Only vocabulary terms selected by the user can be saved, with source `AI`.
+
 ## Local-First Privacy
 
-Translate & Explain sends text only to a local Ollama server at `OLLAMA_URL`, which defaults to `http://127.0.0.1:11434/api/chat`. The application accepts only loopback Ollama URLs such as `localhost`, `127.0.0.1`, or `::1`; a remote host is rejected. It does not call OpenAI, Google, DeepL, external translation services, analytics providers, or remote AI APIs.
+Translate & Explain and Developer Mode send text only to a local Ollama server at `OLLAMA_URL`, which defaults to `http://127.0.0.1:11434/api/chat`. The application accepts only loopback Ollama URLs such as `localhost`, `127.0.0.1`, or `::1`; a remote host is rejected. It does not call OpenAI, Google, DeepL, external translation services, analytics providers, or remote AI APIs.
 
 The application does not persist submitted text by default and does not deliberately log submitted text. Still, use a locally managed Ollama installation and follow your organization's data-handling policy before pasting sensitive material. Never commit private workplace text, customer data, internal URLs, credentials, or confidential requirements to this public repository.
 
@@ -149,6 +163,8 @@ french-work-assistant/
     ├── conftest.py
     ├── test_glossary.py
     ├── test_routes.py
+    ├── test_developer_mode.py
+    ├── test_saved_terms.py
     └── test_translate_explain.py
 ```
 
@@ -212,10 +228,11 @@ python3 -m pytest
 
 The tests cover public/custom glossary loading, strict validation, duplicate detection, source metadata, Custom > CRM > Workplace precedence, French and English lookup, Unicode/accent normalization, abbreviations, related terms, and Quick Lookup routes.
 
-They also use temporary SQLite files to cover Saved Terms initialization, explicit glossary/AI saves, duplicate prevention, listing, search, filters, ordering, deletion, and invalid requests. The AI tests mock the local Ollama HTTP call to cover successful structured results, invalid input, request length limits, malformed model JSON, invalid AI schemas, unavailable Ollama, and timeouts. No test needs a real Ollama server, real saved-terms database, or non-public workplace data.
+They also use temporary SQLite files to cover Saved Terms initialization, explicit glossary/AI saves, duplicate prevention, listing, search, filters, ordering, deletion, and invalid requests. The AI tests mock the local Ollama HTTP call to cover Translate & Explain and Developer Mode successful results, input limits, malformed model JSON, invalid schemas, unavailable Ollama, timeouts, and selected vocabulary saving. No test needs a real Ollama server, real saved-terms database, or non-public workplace data.
 
 ## Limitations
 
 - Translate & Explain depends on a locally installed Ollama model and may return an error while Ollama is stopped, still loading, or produces invalid JSON.
 - Model explanations are assistance, not an authoritative source of business requirements. Check ambiguous wording with the French-speaking author or product owner.
+- Developer Mode separates direct source statements from implementation interpretations, but it is not an authoritative source of product decisions. Confirm ambiguities with the original author or product owner before implementing.
 - This version intentionally has no cloud sync, custom translation memory, remote AI APIs, authentication, or deployment configuration.
