@@ -281,6 +281,68 @@ button:hover {
     border-top: 1px solid var(--line);
 }
 
+.developer-section + .developer-section,
+.developer-section + .translate-section,
+.translate-section + .developer-section {
+    margin-top: 22px;
+    padding-top: 22px;
+    border-top: 1px solid var(--line);
+}
+
+.section-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.section-heading h2,
+.section-heading h3 {
+    margin-bottom: 8px;
+}
+
+.copy-button {
+    min-height: 32px;
+    padding: 0 10px;
+    color: var(--accent-dark);
+    background: var(--chip);
+    font-size: 0.82rem;
+}
+
+.copy-button:hover {
+    background: #dcebe0;
+}
+
+.developer-explicit {
+    border-left: 3px solid var(--accent);
+    padding-left: 14px;
+}
+
+.developer-interpretation {
+    border-left: 3px solid #b7791f;
+    padding-left: 14px;
+}
+
+.developer-ambiguity {
+    border-left: 3px solid #9f1239;
+    padding-left: 14px;
+}
+
+.developer-list {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.developer-list li + li {
+    margin-top: 8px;
+}
+
+.developer-full-copy {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 22px;
+}
+
 .translate-section h3,
 .translate-section h4 {
     margin: 0 0 8px;
@@ -411,5 +473,9 @@ button:hover {
 
     .saved-term-header {
         display: block;
+    }
+
+    .section-heading {
+        align-items: start;
     }
 }

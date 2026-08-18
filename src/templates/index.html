@@ -19,6 +19,7 @@
         <div class="mode-tabs" role="tablist" aria-label="Assistant mode">
             <button class="mode-tab is-active" id="lookup-tab" type="button" role="tab" aria-selected="true" aria-controls="lookup-mode">Quick Lookup</button>
             <button class="mode-tab" id="translate-tab" type="button" role="tab" aria-selected="false" aria-controls="translate-mode">Translate &amp; Explain</button>
+            <button class="mode-tab" id="developer-tab" type="button" role="tab" aria-selected="false" aria-controls="developer-mode">Developer Mode</button>
             <button class="mode-tab" id="saved-tab" type="button" role="tab" aria-selected="false" aria-controls="saved-mode">Saved Terms</button>
         </div>
 
@@ -38,6 +39,22 @@
                     required
                 >
                 <button type="submit">Search</button>
+            </form>
+        </section>
+
+        <section class="lookup-panel mode-panel" id="developer-mode" role="tabpanel" aria-labelledby="developer-tab" hidden>
+            <div class="panel-header">
+                <h2>Developer Mode</h2>
+                <p>Paste French requirements, workflow descriptions, feedback, or issue text.</p>
+            </div>
+
+            <form class="translate-form" id="developer-form">
+                <label class="sr-only" for="developer-input">French developer text</label>
+                <textarea id="developer-input" name="text" maxlength="6000" placeholder="Paste French text to separate explicit requirements, implementation interpretations, and questions." required></textarea>
+                <div class="form-actions">
+                    <p id="developer-character-count" class="character-count">0 / 6,000</p>
+                    <button type="submit">Interpret for Development</button>
+                </div>
             </form>
         </section>
 
@@ -81,6 +98,7 @@
 
         <section id="lookup-result" class="result-region" aria-live="polite"></section>
         <section id="translate-result" class="result-region" aria-live="polite" hidden></section>
+        <section id="developer-result" class="result-region" aria-live="polite" hidden></section>
         <section id="saved-result" class="result-region" aria-live="polite" hidden></section>
     </main>
 

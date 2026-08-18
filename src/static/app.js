@@ -190,21 +190,120 @@ function handleTranslate(event) {
         });
 }
 
+function renderCopyButton(content, label) {
+    return `<button type="button" class="copy-button" data-copy-content="${escapeHtml(content)}">${escapeHtml(label)}</button>`;
+}
+
+function renderDeveloperList(title, items, kind) {
+    if (!items.length) {
+        return "";
+    }
+    const content = items.map((item) => `- ${item}`).join("\n");
+    return `
+        <section class="developer-section developer-${escapeHtml(kind)}">
+            <div class="section-heading">
+                <h3>${escapeHtml(title)}</h3>
+                ${renderCopyButton(content, "Copy")}
+            </div>
+            <ul class="developer-list">
+                ${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+            </ul>
+        </section>
+    `;
+}
+
+function buildDeveloperCopyText(result) {
+    return [
+        `Natural English Translation\n${result.translation}`,
+        `Explicit Requirements\n${result.explicit_requirements.map((item) => `- ${item}`).join("\n")}`,
+        `Implementation Notes (interpretations, not confirmed requirements)\n${result.implementation_notes.map((item) => `- ${item}`).join("\n")}`,
+        `Important Vocabulary\n${result.important_vocabulary.map((item) => `- ${item.french}: ${item.english}`).join("\n")}`,
+        `Ambiguities / Questions\n${result.ambiguities.map((item) => `- ${item}`).join("\n")}`,
+    ].join("\n\n");
+}
+
+function renderDeveloperResult(result) {
+    const vocabulary = renderVocabulary(result.important_vocabulary);
+    return `
+        <article class="result-card developer-result-card">
+            <section class="developer-section developer-translation">
+                <div class="section-heading">
+                    <h2>Natural English Translation</h2>
+                    ${renderCopyButton(result.translation, "Copy")}
+                </div>
+                <p>${escapeHtml(result.translation)}</p>
+            </section>
+            ${renderDeveloperList("Explicit Requirements (Source-stated)", result.explicit_requirements, "explicit")}
+            ${renderDeveloperList("Implementation Notes (Interpretations)", result.implementation_notes, "interpretation")}
+            ${vocabulary}
+            ${renderDeveloperList("Ambiguities / Questions", result.ambiguities, "ambiguity")}
+            <div class="developer-full-copy">
+                ${renderCopyButton(buildDeveloperCopyText(result), "Copy full result")}
+            </div>
+        </article>
+    `;
+}
+
+function handleDeveloperMode(event) {
+    event.preventDefault();
+
+    const input = document.getElementById("developer-input");
+    const text = input.value.trim();
+    const result = document.getElementById("developer-result");
+    if (!text) {
+        input.focus();
+        return;
+    }
+
+    result.innerHTML = `<article class="empty-state"><p>Interpreting locally with Ollama...</p></article>`;
+    fetch("/api/developer-mode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+    })
+        .then((response) => response.json().then((data) => ({ status: response.status, data })))
+        .then(({ data }) => {
+            result.innerHTML = data.ok ? renderDeveloperResult(data.result) : renderTranslateError(data.error);
+        })
+        .catch(() => {
+            result.innerHTML = renderTranslateError("The local service could not be reached. Check that Ollama is running and try again.");
+        });
+}
+
+function copyText(button) {
+    const content = button.dataset.copyContent;
+    if (!navigator.clipboard) {
+        return;
+    }
+    navigator.clipboard.writeText(content).then(() => {
+        const label = button.textContent;
+        button.textContent = "Copied";
+        window.setTimeout(() => {
+            button.textContent = label;
+        }, 1200);
+    });
+}
+
 function setActiveMode(mode) {
     const lookupIsActive = mode === "lookup";
     const translateIsActive = mode === "translate";
+    const developerIsActive = mode === "developer";
     const savedIsActive = mode === "saved";
     document.getElementById("lookup-tab").classList.toggle("is-active", lookupIsActive);
     document.getElementById("lookup-tab").setAttribute("aria-selected", String(lookupIsActive));
     document.getElementById("translate-tab").classList.toggle("is-active", translateIsActive);
     document.getElementById("translate-tab").setAttribute("aria-selected", String(translateIsActive));
+    document.getElementById("developer-tab").classList.toggle("is-active", developerIsActive);
+    document.getElementById("developer-tab").setAttribute("aria-selected", String(developerIsActive));
     document.getElementById("saved-tab").classList.toggle("is-active", savedIsActive);
     document.getElementById("saved-tab").setAttribute("aria-selected", String(savedIsActive));
     document.getElementById("lookup-mode").hidden = !lookupIsActive;
     document.getElementById("translate-mode").hidden = !translateIsActive;
+    document.getElementById("developer-mode").hidden = !developerIsActive;
     document.getElementById("saved-mode").hidden = !savedIsActive;
     document.getElementById("lookup-result").hidden = !lookupIsActive;
     document.getElementById("translate-result").hidden = !translateIsActive;
+    document.getElementById("developer-result").hidden = !developerIsActive;
     document.getElementById("saved-result").hidden = !savedIsActive;
     if (savedIsActive) {
         loadSavedTerms();
@@ -357,8 +456,34 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
+    const developerForm = document.getElementById("developer-form");
+    const developerInput = document.getElementById("developer-input");
+    if (developerForm && developerInput) {
+        developerForm.addEventListener("submit", handleDeveloperMode);
+        developerInput.addEventListener("input", () => {
+            document.getElementById("developer-character-count").textContent = `${developerInput.value.length.toLocaleString()} / 6,000`;
+        });
+    }
+
+    document.getElementById("developer-result").addEventListener("click", (event) => {
+        const copyButton = event.target.closest(".copy-button");
+        if (copyButton) {
+            copyText(copyButton);
+        }
+        const aiButton = event.target.closest(".save-ai-term");
+        if (aiButton) {
+            saveTerm(aiButton, {
+                kind: "ai_vocabulary",
+                french: aiButton.dataset.french,
+                english: aiButton.dataset.english,
+                explanation: aiButton.dataset.explanation,
+            });
+        }
+    });
+
     document.getElementById("lookup-tab").addEventListener("click", () => setActiveMode("lookup"));
     document.getElementById("translate-tab").addEventListener("click", () => setActiveMode("translate"));
+    document.getElementById("developer-tab").addEventListener("click", () => setActiveMode("developer"));
     document.getElementById("saved-tab").addEventListener("click", () => setActiveMode("saved"));
     document.getElementById("saved-search-form").addEventListener("submit", loadSavedTerms);
     document.getElementById("saved-source-filter").addEventListener("change", loadSavedTerms);

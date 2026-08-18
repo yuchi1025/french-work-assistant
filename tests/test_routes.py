@@ -9,6 +9,7 @@ def test_home_page_loads():
     assert response.status_code == 200
     assert b"French Work Assistant" in response.data
     assert b"Quick Lookup" in response.data
+    assert b"Developer Mode" in response.data
 
 
 def test_lookup_api_returns_result():
