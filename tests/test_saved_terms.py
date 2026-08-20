@@ -134,3 +134,24 @@ def test_invalid_save_and_delete_requests_are_rejected(saved_terms_client):
     assert client.get("/api/saved-terms?source=Unknown").status_code == 400
     assert client.delete("/api/saved-terms/not-an-id").status_code == 400
     assert client.delete("/api/saved-terms/999").status_code == 404
+
+
+def test_saved_terms_storage_errors_are_generic(monkeypatch, saved_terms_client):
+    client, _ = saved_terms_client
+
+    def raise_storage_error(*args, **kwargs):
+        raise sqlite3.OperationalError("private filesystem detail")
+
+    monkeypatch.setattr(french_app, "list_saved_terms", raise_storage_error)
+    response = client.get("/api/saved-terms")
+    assert response.status_code == 503
+    assert response.get_json()["error"] == "Saved Terms storage is unavailable. Please try again."
+
+    monkeypatch.setattr(french_app, "save_term", raise_storage_error)
+    response = save_glossary_term(client, "prospect")
+    assert response.status_code == 503
+    assert "private filesystem detail" not in response.get_json()["error"]
+
+    monkeypatch.setattr(french_app, "delete_saved_term", raise_storage_error)
+    response = client.delete("/api/saved-terms/1")
+    assert response.status_code == 503

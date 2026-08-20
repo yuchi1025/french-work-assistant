@@ -113,9 +113,11 @@ function renderTranslateError(message) {
     return `<article class="empty-state"><h2>Unable to translate</h2><p>${escapeHtml(message)}</p></article>`;
 }
 
-function renderVocabulary(vocabulary) {
+function renderVocabulary(vocabulary, emptyMessage = "") {
     if (!vocabulary.length) {
-        return "";
+        return emptyMessage
+            ? `<section class="translate-section"><h3>Important Vocabulary</h3><p class="section-empty">${escapeHtml(emptyMessage)}</p></section>`
+            : "";
     }
 
     return `
@@ -195,19 +197,21 @@ function renderCopyButton(content, label) {
 }
 
 function renderDeveloperList(title, items, kind) {
-    if (!items.length) {
-        return "";
-    }
     const content = items.map((item) => `- ${item}`).join("\n");
+    const emptyMessage = kind === "explicit"
+        ? "No explicit requirements were identified in the source."
+        : kind === "interpretation"
+            ? "No implementation interpretations were identified."
+            : "No source-specific questions were identified.";
     return `
         <section class="developer-section developer-${escapeHtml(kind)}">
             <div class="section-heading">
                 <h3>${escapeHtml(title)}</h3>
-                ${renderCopyButton(content, "Copy")}
+                ${items.length ? renderCopyButton(content, "Copy") : ""}
             </div>
-            <ul class="developer-list">
-                ${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
-            </ul>
+            ${items.length
+                ? `<ul class="developer-list">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`
+                : `<p class="section-empty">${emptyMessage}</p>`}
         </section>
     `;
 }
@@ -223,7 +227,7 @@ function buildDeveloperCopyText(result) {
 }
 
 function renderDeveloperResult(result) {
-    const vocabulary = renderVocabulary(result.important_vocabulary);
+    const vocabulary = renderVocabulary(result.important_vocabulary, "No important vocabulary was identified.");
     return `
         <article class="result-card developer-result-card">
             <section class="developer-section developer-translation">
@@ -272,16 +276,32 @@ function handleDeveloperMode(event) {
 
 function copyText(button) {
     const content = button.dataset.copyContent;
-    if (!navigator.clipboard) {
-        return;
-    }
-    navigator.clipboard.writeText(content).then(() => {
+    const showCopied = () => {
         const label = button.textContent;
         button.textContent = "Copied";
         window.setTimeout(() => {
             button.textContent = label;
         }, 1200);
-    });
+    };
+    const fallbackCopy = () => {
+        const temporaryInput = document.createElement("textarea");
+        temporaryInput.value = content;
+        temporaryInput.setAttribute("readonly", "");
+        temporaryInput.className = "sr-only";
+        document.body.appendChild(temporaryInput);
+        temporaryInput.select();
+        const copied = document.execCommand("copy");
+        temporaryInput.remove();
+        if (copied) {
+            showCopied();
+        }
+    };
+
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(content).then(showCopied).catch(fallbackCopy);
+    } else {
+        fallbackCopy();
+    }
 }
 
 function setActiveMode(mode) {

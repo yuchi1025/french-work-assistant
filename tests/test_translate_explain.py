@@ -100,6 +100,20 @@ def test_translate_explain_rejects_malformed_ollama_json(monkeypatch):
     assert "invalid structured response" in response.get_json()["error"]
 
 
+def test_translate_explain_rejects_invalid_ollama_encoding(monkeypatch):
+    def fake_urlopen(request, timeout):
+        return FakeOllamaResponse(b"\xff")
+
+    monkeypatch.setattr(french_app.urllib.request, "urlopen", fake_urlopen)
+    french_app.TRANSLATE_EXPLAIN_CACHE.clear()
+    client = french_app.app.test_client()
+
+    response = client.post("/api/translate-explain", json={"text": "Planifier un rendez-vous."})
+
+    assert response.status_code == 502
+    assert "invalid structured response" in response.get_json()["error"]
+
+
 def test_translate_explain_rejects_missing_required_ai_fields(monkeypatch):
     result = valid_result()
     result.pop("developer_interpretation")
