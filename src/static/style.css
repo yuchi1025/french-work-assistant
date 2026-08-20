@@ -85,9 +85,11 @@ h2 {
     gap: 4px;
     margin-bottom: 16px;
     border-bottom: 1px solid var(--line);
+    overflow-x: auto;
 }
 
 .mode-tab {
+    flex: 0 0 auto;
     min-height: 42px;
     padding: 0 14px;
     border: 0;
@@ -192,6 +194,7 @@ button:hover {
 .result-card,
 .empty-state {
     padding: 24px;
+    overflow-wrap: anywhere;
 }
 
 .result-header {
@@ -352,6 +355,11 @@ button:hover {
     font-size: 1rem;
 }
 
+.section-empty {
+    margin-bottom: 0;
+    color: var(--muted);
+}
+
 .vocabulary-list {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
@@ -363,6 +371,7 @@ button:hover {
     border: 1px solid var(--line);
     border-radius: 8px;
     background: #fbfcfa;
+    overflow-wrap: anywhere;
 }
 
 .vocabulary-item p:last-child {
@@ -386,6 +395,7 @@ button:hover {
     border: 1px solid var(--line);
     border-radius: 8px;
     background: var(--panel);
+    overflow-wrap: anywhere;
 }
 
 .saved-term-card p:last-of-type {
@@ -461,6 +471,14 @@ button:hover {
 
     button {
         width: 100%;
+    }
+
+    .mode-tab,
+    .related-term,
+    .save-term-button,
+    .delete-term-button,
+    .copy-button {
+        width: auto;
     }
 
     .result-header {

@@ -224,7 +224,7 @@ def connect_saved_terms_db():
     return connection
 
 
-def validate_saved_text(value, field, required=True, limit=MAX_SAVED_TEXT_LENGTH):
+def validate_saved_text(value, required=True, limit=MAX_SAVED_TEXT_LENGTH):
     if not isinstance(value, str):
         return None
     clean_value = value.strip()
@@ -234,7 +234,7 @@ def validate_saved_text(value, field, required=True, limit=MAX_SAVED_TEXT_LENGTH
 
 
 def build_saved_term_from_glossary(term):
-    clean_term = validate_saved_text(term, "term", limit=MAX_SAVED_TERM_LENGTH)
+    clean_term = validate_saved_text(term, limit=MAX_SAVED_TERM_LENGTH)
     if clean_term is None:
         return None
     entry = lookup_term(clean_term)
@@ -253,9 +253,9 @@ def build_saved_term_from_glossary(term):
 
 
 def build_saved_term_from_ai(payload):
-    french = validate_saved_text(payload.get("french"), "french", limit=MAX_SAVED_TERM_LENGTH)
-    english = validate_saved_text(payload.get("english"), "english")
-    explanation = validate_saved_text(payload.get("explanation"), "explanation")
+    french = validate_saved_text(payload.get("french"), limit=MAX_SAVED_TERM_LENGTH)
+    english = validate_saved_text(payload.get("english"))
+    explanation = validate_saved_text(payload.get("explanation"))
     if not all((french, english, explanation)):
         return None
     return {
@@ -331,17 +331,9 @@ def validate_translate_explain_result(result):
         if result[field] is not None and (not isinstance(result[field], str) or not result[field].strip()):
             return None
 
-    vocabulary = result["important_vocabulary"]
-    if not isinstance(vocabulary, list) or len(vocabulary) > 12:
+    clean_vocabulary = validate_important_vocabulary(result["important_vocabulary"])
+    if clean_vocabulary is None:
         return None
-
-    clean_vocabulary = []
-    for item in vocabulary:
-        if not isinstance(item, dict) or set(item) != AI_VOCABULARY_FIELDS:
-            return None
-        if any(not isinstance(item[field], str) or not item[field].strip() for field in AI_VOCABULARY_FIELDS):
-            return None
-        clean_vocabulary.append({field: item[field].strip() for field in AI_VOCABULARY_FIELDS})
 
     return {
         "natural_english_translation": result["natural_english_translation"].strip(),
@@ -434,14 +426,14 @@ def fetch_structured_ollama(system_prompt, text):
 
     try:
         with urllib.request.urlopen(http_request, timeout=OLLAMA_TIMEOUT) as response:
-            raw_response = response.read().decode("utf-8")
+            raw_response = response.read()
     except (OSError, TimeoutError, socket.timeout, urllib.error.URLError):
         return None, "Local Ollama is unavailable. Start Ollama and make sure the configured model is installed."
 
     try:
-        response_data = json.loads(raw_response)
+        response_data = json.loads(raw_response.decode("utf-8"))
         parsed_result = json.loads(response_data["message"]["content"])
-    except (json.JSONDecodeError, KeyError, TypeError):
+    except (UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError):
         return None, "Local Ollama returned an invalid structured response. Please try again."
 
     return parsed_result, None
@@ -509,10 +501,6 @@ def fetch_developer_mode(text):
     return validated_result, None
 
 
-def get_developer_mode(text):
-    return fetch_developer_mode(text)
-
-
 @app.route("/", methods=["GET"])
 def home():
     return render_template("index.html")
@@ -561,7 +549,7 @@ def api_developer_mode():
     if len(text) > MAX_TRANSLATE_TEXT_LENGTH:
         return jsonify({"ok": False, "error": f"Text must be {MAX_TRANSLATE_TEXT_LENGTH:,} characters or fewer."}), 413
 
-    result, error = get_developer_mode(text)
+    result, error = fetch_developer_mode(text)
     if error:
         return jsonify({"ok": False, "error": error}), 503 if "unavailable" in error else 502
 
@@ -577,7 +565,10 @@ def api_list_saved_terms():
     if source and source not in SAVED_TERM_SOURCES:
         return jsonify({"ok": False, "error": "Invalid source filter."}), 400
 
-    terms, total = list_saved_terms(query=query, source=source)
+    try:
+        terms, total = list_saved_terms(query=query, source=source)
+    except (OSError, sqlite3.Error):
+        return jsonify({"ok": False, "error": "Saved Terms storage is unavailable. Please try again."}), 503
     return jsonify({"ok": True, "terms": terms, "total": total})
 
 
@@ -600,7 +591,10 @@ def api_save_term():
         if saved_term is None:
             return jsonify({"ok": False, "error": "The AI vocabulary item could not be saved."}), 400
 
-    saved_id, created = save_term(saved_term)
+    try:
+        saved_id, created = save_term(saved_term)
+    except (OSError, sqlite3.Error):
+        return jsonify({"ok": False, "error": "Saved Terms storage is unavailable. Please try again."}), 503
     if not created:
         return jsonify({"ok": True, "saved": False, "message": "Already saved."})
     return jsonify({"ok": True, "saved": True, "id": saved_id, "message": "Saved."}), 201
@@ -611,7 +605,11 @@ def api_delete_saved_term(term_id):
     if not term_id.isdigit() or int(term_id) < 1:
         return jsonify({"ok": False, "error": "Invalid saved term id."}), 400
     term_id = int(term_id)
-    if not delete_saved_term(term_id):
+    try:
+        deleted = delete_saved_term(term_id)
+    except (OSError, sqlite3.Error):
+        return jsonify({"ok": False, "error": "Saved Terms storage is unavailable. Please try again."}), 503
+    if not deleted:
         return jsonify({"ok": False, "error": "Saved term not found."}), 404
     return jsonify({"ok": True})
 
