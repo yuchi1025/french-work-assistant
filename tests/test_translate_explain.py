@@ -34,10 +34,38 @@ def valid_result():
     }
 
 
-def mock_ollama(monkeypatch, result):
+def complete_multiline_result():
+    return {
+        "natural_english_translation": "The lead would like to be called back tomorrow. They prefer to be contacted in the morning.",
+        "plain_english_meaning": "The lead wants a follow-up call tomorrow, preferably in the morning.",
+        "business_crm_context": "This is a CRM follow-up preference for a potential customer.",
+        "important_vocabulary": [
+            {
+                "french": "prospect",
+                "english": "lead",
+                "explanation": "A potential customer.",
+            },
+            {
+                "french": "être rappelé / rappeler",
+                "english": "to be called back / to call back",
+                "explanation": "A request for a later phone follow-up.",
+            },
+            {
+                "french": "le matin",
+                "english": "in the morning",
+                "explanation": "The preferred time of day.",
+            },
+        ],
+        "developer_interpretation": None,
+    }
+
+
+def mock_ollama(monkeypatch, result, requests=None):
     payload = {"message": {"content": json.dumps(result)}}
 
     def fake_urlopen(request, timeout):
+        if requests is not None:
+            requests.append(json.loads(request.data.decode("utf-8")))
         return FakeOllamaResponse(json.dumps(payload).encode("utf-8"))
 
     monkeypatch.setattr(french_app.urllib.request, "urlopen", fake_urlopen)
@@ -59,10 +87,85 @@ def test_translate_explain_succeeds_with_mocked_ollama(monkeypatch):
     assert data["result"]["important_vocabulary"][0]["french"] == "prospect"
 
 
+def test_translate_explain_preserves_two_line_text_in_one_ollama_request(monkeypatch):
+    requests = []
+    mock_ollama(monkeypatch, complete_multiline_result(), requests)
+    client = french_app.app.test_client()
+    text = "Le prospect souhaite être rappelé demain.\nIl préfère être contacté le matin."
+
+    response = client.post("/api/translate-explain", json={"text": text})
+
+    assert response.status_code == 200
+    assert len(requests) == 1
+    assert requests[0]["messages"][1] == {"role": "user", "content": text}
+    assert "called back tomorrow" in response.get_json()["result"]["natural_english_translation"]
+    assert "contacted in the morning" in response.get_json()["result"]["natural_english_translation"]
+    assert "complete, faithful natural English translation" in requests[0]["messages"][0]["content"]
+
+
+def test_translate_explain_accepts_source_grounded_vocabulary(monkeypatch):
+    mock_ollama(monkeypatch, complete_multiline_result())
+    client = french_app.app.test_client()
+    text = "Le prospect souhaite être rappelé demain.\nIl préfère être contacté le matin."
+
+    response = client.post("/api/translate-explain", json={"text": text})
+
+    assert response.status_code == 200
+    assert [item["french"] for item in response.get_json()["result"]["important_vocabulary"]] == [
+        "prospect",
+        "être rappelé / rappeler",
+        "le matin",
+    ]
+
+
+def test_translate_explain_filters_vocabulary_not_present_in_source(monkeypatch):
+    result = complete_multiline_result()
+    result["important_vocabulary"].append(
+        {
+            "french": "opportunité",
+            "english": "opportunity",
+            "explanation": "An unsupported related CRM term.",
+        }
+    )
+    mock_ollama(monkeypatch, result)
+    client = french_app.app.test_client()
+
+    response = client.post(
+        "/api/translate-explain",
+        json={"text": "Le prospect souhaite être rappelé demain.\nIl préfère être contacté le matin."},
+    )
+
+    assert response.status_code == 200
+    vocabulary = response.get_json()["result"]["important_vocabulary"]
+    assert "opportunité" not in [item["french"] for item in vocabulary]
+
+
+def test_translate_explain_preserves_blank_lines_and_trims_only_outer_whitespace(monkeypatch):
+    requests = []
+    mock_ollama(monkeypatch, valid_result(), requests)
+    client = french_app.app.test_client()
+    text = " \nLe prospect souhaite recevoir un devis.\n\nIl souhaite également planifier un rendez-vous.\n "
+    expected_text = "Le prospect souhaite recevoir un devis.\n\nIl souhaite également planifier un rendez-vous."
+
+    response = client.post("/api/translate-explain", json={"text": text})
+
+    assert response.status_code == 200
+    assert requests[0]["messages"][1]["content"] == expected_text
+
+
 def test_translate_explain_rejects_empty_input():
     client = french_app.app.test_client()
 
     response = client.post("/api/translate-explain", json={"text": "   "})
+
+    assert response.status_code == 400
+    assert response.get_json()["ok"] is False
+
+
+def test_translate_explain_rejects_whitespace_only_multiline_input():
+    client = french_app.app.test_client()
+
+    response = client.post("/api/translate-explain", json={"text": " \n\t \n"})
 
     assert response.status_code == 400
     assert response.get_json()["ok"] is False
@@ -84,6 +187,15 @@ def test_translate_explain_rejects_excessive_input():
 
     assert response.status_code == 413
     assert "6,000" in response.get_json()["error"]
+
+
+def test_translate_explain_rejects_excessive_multiline_input():
+    client = french_app.app.test_client()
+    text = "a" * (french_app.MAX_TRANSLATE_TEXT_LENGTH - 1) + "\n" + "b"
+
+    response = client.post("/api/translate-explain", json={"text": text})
+
+    assert response.status_code == 413
 
 
 def test_translate_explain_rejects_malformed_ollama_json(monkeypatch):

@@ -319,7 +319,7 @@ def delete_saved_term(term_id):
     return cursor.rowcount > 0
 
 
-def validate_translate_explain_result(result):
+def validate_translate_explain_result(result, source_text):
     if not isinstance(result, dict) or set(result) != AI_REQUIRED_FIELDS:
         return None
 
@@ -331,7 +331,7 @@ def validate_translate_explain_result(result):
         if result[field] is not None and (not isinstance(result[field], str) or not result[field].strip()):
             return None
 
-    clean_vocabulary = validate_important_vocabulary(result["important_vocabulary"])
+    clean_vocabulary = validate_important_vocabulary(result["important_vocabulary"], source_text=source_text)
     if clean_vocabulary is None:
         return None
 
@@ -352,7 +352,15 @@ def validate_string_list(value, limit):
     return [item.strip() for item in value]
 
 
-def validate_important_vocabulary(vocabulary):
+def vocabulary_term_appears_in_source(term, source_text):
+    normalized_source = normalize_text(source_text)
+    for candidate in re.split(r"\s*/\s*", normalize_text(term)):
+        if candidate and re.search(rf"(?<!\w){re.escape(candidate)}(?!\w)", normalized_source):
+            return True
+    return False
+
+
+def validate_important_vocabulary(vocabulary, source_text=None):
     if not isinstance(vocabulary, list) or len(vocabulary) > MAX_DEVELOPER_LIST_ITEMS:
         return None
     clean_vocabulary = []
@@ -361,7 +369,10 @@ def validate_important_vocabulary(vocabulary):
             return None
         if any(not isinstance(item[field], str) or not item[field].strip() for field in AI_VOCABULARY_FIELDS):
             return None
-        clean_vocabulary.append({field: item[field].strip() for field in AI_VOCABULARY_FIELDS})
+        clean_item = {field: item[field].strip() for field in AI_VOCABULARY_FIELDS}
+        if source_text is not None and not vocabulary_term_appears_in_source(clean_item["french"], source_text):
+            continue
+        clean_vocabulary.append(clean_item)
     return clean_vocabulary
 
 
@@ -445,10 +456,15 @@ def fetch_translate_explain(text):
         "Translate French text naturally and explain only what is supported by the text. "
         "Return JSON only, with exactly these keys: natural_english_translation, "
         "plain_english_meaning, business_crm_context, important_vocabulary, developer_interpretation. "
-        "natural_english_translation and plain_english_meaning must be concise non-empty English strings. "
+        "natural_english_translation must be a complete, faithful natural English translation of every meaningful "
+        "part of the supplied French source. It is a translation, not a summary: do not omit later sentences, "
+        "paragraphs, or details. plain_english_meaning must be a concise non-empty English explanation or summary "
+        "of the overall text, separate from the translation. "
         "business_crm_context must be a concise English string when meaningful workplace, CRM, sales, or product "
-        "context is present; otherwise null. important_vocabulary must be a JSON array of at most 12 useful terms. "
-        "Each term must have exactly french, english, and explanation as non-empty strings. "
+        "context is present; otherwise null. important_vocabulary must be a JSON array of at most 12 useful terms "
+        "extracted from the supplied French source only. Every french term must occur in the source; do not invent "
+        "related vocabulary or add topic-relevant terms that do not occur. Each term must have exactly french, "
+        "english, and explanation as non-empty strings. "
         "developer_interpretation must be a concise English string only when the text implies software behavior, "
         "workflow, status handling, permissions, UI behavior, or implementation requirements; otherwise null. "
         "Do not invent business context, requirements, policies, names, or facts not present in the source text."
@@ -457,7 +473,7 @@ def fetch_translate_explain(text):
     if error:
         return None, error
 
-    validated_result = validate_translate_explain_result(parsed_result)
+    validated_result = validate_translate_explain_result(parsed_result, text)
     if validated_result is None:
         return None, "Local Ollama returned an invalid structured response. Please try again."
 
