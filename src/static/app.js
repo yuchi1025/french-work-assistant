@@ -169,9 +169,9 @@ function handleTranslate(event) {
     event.preventDefault();
 
     const input = document.getElementById("translate-input");
-    const text = input.value.trim();
+    const text = input.value;
     const result = document.getElementById("translate-result");
-    if (!text) {
+    if (!text.trim()) {
         input.focus();
         return;
     }
