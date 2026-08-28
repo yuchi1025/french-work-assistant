@@ -140,6 +140,26 @@ function renderVocabulary(vocabulary, emptyMessage = "") {
     `;
 }
 
+function renderLineTranslations(lineTranslations) {
+    if (!lineTranslations.length) {
+        return "";
+    }
+    return `
+        <div class="line-translation-list" role="table" aria-label="Line-by-line translation">
+            <div class="line-translation-header" role="row">
+                <span role="columnheader">French</span>
+                <span role="columnheader">English</span>
+            </div>
+            ${lineTranslations.map((item) => `
+                <div class="line-translation-row" role="row">
+                    <span class="line-translation-french" role="cell">${escapeHtml(item.french)}</span>
+                    <strong role="cell">${escapeHtml(item.english)}</strong>
+                </div>
+            `).join("")}
+        </div>
+    `;
+}
+
 function renderTranslateResult(result) {
     const businessContext = result.business_crm_context
         ? `<section class="translate-section"><h3>Business / CRM Context</h3><p>${escapeHtml(result.business_crm_context)}</p></section>`
@@ -147,12 +167,15 @@ function renderTranslateResult(result) {
     const developerInterpretation = result.developer_interpretation
         ? `<section class="translate-section"><h3>Developer Interpretation</h3><p>${escapeHtml(result.developer_interpretation)}</p></section>`
         : "";
+    const translation = result.line_translations.length
+        ? renderLineTranslations(result.line_translations)
+        : `<p>${escapeHtml(result.natural_english_translation)}</p>`;
 
     return `
         <article class="result-card translate-result-card">
             <section class="translate-section">
                 <h2>Natural English Translation</h2>
-                <p>${escapeHtml(result.natural_english_translation)}</p>
+                ${translation}
             </section>
             <section class="translate-section">
                 <h3>Plain-English Meaning</h3>

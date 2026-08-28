@@ -355,6 +355,35 @@ button:hover {
     font-size: 1rem;
 }
 
+.line-translation-list {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.line-translation-header,
+.line-translation-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 16px;
+    padding: 12px 14px;
+}
+
+.line-translation-header {
+    background: var(--chip);
+    color: var(--muted);
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+
+.line-translation-row + .line-translation-row {
+    border-top: 1px solid var(--line);
+}
+
+.line-translation-french {
+    font-style: italic;
+}
+
 .section-empty {
     margin-bottom: 0;
     color: var(--muted);
@@ -495,5 +524,14 @@ button:hover {
 
     .section-heading {
         align-items: start;
+    }
+
+    .line-translation-header {
+        display: none;
+    }
+
+    .line-translation-row {
+        grid-template-columns: 1fr;
+        gap: 4px;
     }
 }

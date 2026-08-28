@@ -21,6 +21,7 @@ class FakeOllamaResponse:
 def valid_result():
     return {
         "natural_english_translation": "The prospect did not respond, so they should be called again later.",
+        "line_translations": None,
         "plain_english_meaning": "The sales lead has not replied and needs a future follow-up.",
         "business_crm_context": "This describes a CRM follow-up action for a prospect.",
         "important_vocabulary": [
@@ -37,6 +38,7 @@ def valid_result():
 def complete_multiline_result():
     return {
         "natural_english_translation": "The lead would like to be called back tomorrow. They prefer to be contacted in the morning.",
+        "line_translations": None,
         "plain_english_meaning": "The lead wants a follow-up call tomorrow, preferably in the morning.",
         "business_crm_context": "This is a CRM follow-up preference for a potential customer.",
         "important_vocabulary": [
@@ -57,6 +59,24 @@ def complete_multiline_result():
             },
         ],
         "developer_interpretation": None,
+    }
+
+
+def action_list_result(line_translations=None):
+    return {
+        "natural_english_translation": "Save the changes. Mark as ready to send. Exclude. Close.",
+        "line_translations": line_translations
+        if line_translations is not None
+        else [
+            {"french": "enregistrer les modifications", "english": "save the changes"},
+            {"french": "marquer prêt à envoyer", "english": "mark as ready to send"},
+            {"french": "écarter", "english": "exclude or dismiss"},
+            {"french": "fermer", "english": "close"},
+        ],
+        "plain_english_meaning": "These are generic interface or workflow actions.",
+        "business_crm_context": None,
+        "important_vocabulary": [],
+        "developer_interpretation": "These could be labels for actions in an interface.",
     }
 
 
@@ -138,6 +158,133 @@ def test_translate_explain_filters_vocabulary_not_present_in_source(monkeypatch)
     assert response.status_code == 200
     vocabulary = response.get_json()["result"]["important_vocabulary"]
     assert "opportunité" not in [item["french"] for item in vocabulary]
+
+
+def test_translate_explain_returns_source_ordered_line_translations_for_short_action_list(monkeypatch):
+    requests = []
+    mock_ollama(monkeypatch, action_list_result(), requests)
+    client = french_app.app.test_client()
+    text = "enregistrer les modifications\nmarquer prêt à envoyer\nécarter\nfermer"
+
+    response = client.post("/api/translate-explain", json={"text": text})
+
+    assert response.status_code == 200
+    result = response.get_json()["result"]
+    assert result["line_translations"] == [
+        {"french": "enregistrer les modifications", "english": "save the changes"},
+        {"french": "marquer prêt à envoyer", "english": "mark as ready to send"},
+        {"french": "écarter", "english": "exclude or dismiss"},
+        {"french": "fermer", "english": "close"},
+    ]
+    assert requests[0]["messages"][1]["content"] == text
+    assert "line_translations must be null" in requests[0]["messages"][0]["content"]
+
+
+def test_translate_explain_falls_back_when_list_lines_do_not_match_source(monkeypatch):
+    result = action_list_result()
+    result["line_translations"][2]["french"] = "archiver"
+    mock_ollama(monkeypatch, result)
+    client = french_app.app.test_client()
+
+    response = client.post(
+        "/api/translate-explain",
+        json={"text": "enregistrer les modifications\nmarquer prêt à envoyer\nécarter\nfermer"},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["result"]["line_translations"] == []
+
+
+def test_translate_explain_falls_back_when_list_output_is_incomplete(monkeypatch):
+    result = action_list_result(line_translations=[{"french": "enregistrer les modifications", "english": "save the changes"}])
+    mock_ollama(monkeypatch, result)
+    client = french_app.app.test_client()
+
+    response = client.post(
+        "/api/translate-explain",
+        json={"text": "enregistrer les modifications\nmarquer prêt à envoyer\nécarter\nfermer"},
+    )
+
+    assert response.status_code == 200
+    data = response.get_json()["result"]
+    assert data["line_translations"] == []
+    assert data["natural_english_translation"] == "Save the changes. Mark as ready to send. Exclude. Close."
+
+
+def test_translate_explain_derives_rows_when_model_omits_line_translations_but_preserves_lines(monkeypatch):
+    result = action_list_result()
+    result.pop("line_translations")
+    result["natural_english_translation"] = "save the changes\nmark as ready to send\nexclude or dismiss\nclose"
+    mock_ollama(monkeypatch, result)
+    client = french_app.app.test_client()
+
+    response = client.post(
+        "/api/translate-explain",
+        json={"text": "enregistrer les modifications\nmarquer prêt à envoyer\nécarter\nfermer"},
+    )
+
+    assert response.status_code == 200
+    data = response.get_json()["result"]
+    assert data["line_translations"] == [
+        {"french": "enregistrer les modifications", "english": "save the changes"},
+        {"french": "marquer prêt à envoyer", "english": "mark as ready to send"},
+        {"french": "écarter", "english": "exclude or dismiss"},
+        {"french": "fermer", "english": "close"},
+    ]
+
+
+def test_translate_explain_accepts_line_aligned_translation_array_for_short_action_list(monkeypatch):
+    result = action_list_result()
+    result.pop("line_translations")
+    result["natural_english_translation"] = [
+        "save the changes",
+        "mark as ready to send",
+        "exclude or dismiss",
+        "close",
+    ]
+    mock_ollama(monkeypatch, result)
+    client = french_app.app.test_client()
+
+    response = client.post(
+        "/api/translate-explain",
+        json={"text": "enregistrer les modifications\nmarquer prêt à envoyer\nécarter\nfermer"},
+    )
+
+    assert response.status_code == 200
+    data = response.get_json()["result"]
+    assert data["natural_english_translation"] == "save the changes\nmark as ready to send\nexclude or dismiss\nclose"
+    assert [item["english"] for item in data["line_translations"]] == [
+        "save the changes",
+        "mark as ready to send",
+        "exclude or dismiss",
+        "close",
+    ]
+
+
+def test_translate_explain_falls_back_when_omitted_line_translations_are_not_line_aligned(monkeypatch):
+    result = action_list_result()
+    result.pop("line_translations")
+    mock_ollama(monkeypatch, result)
+    client = french_app.app.test_client()
+
+    response = client.post(
+        "/api/translate-explain",
+        json={"text": "enregistrer les modifications\nmarquer prêt à envoyer\nécarter\nfermer"},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["result"]["line_translations"] == []
+
+
+def test_translate_explain_keeps_sentence_and_blank_line_prose_out_of_list_mode(monkeypatch):
+    mock_ollama(monkeypatch, complete_multiline_result())
+    client = french_app.app.test_client()
+    text = "Le prospect souhaite être rappelé demain.\n\nIl préfère être contacté le matin."
+
+    response = client.post("/api/translate-explain", json={"text": text})
+
+    assert response.status_code == 200
+    assert response.get_json()["result"]["line_translations"] == []
 
 
 def test_translate_explain_preserves_blank_lines_and_trims_only_outer_whitespace(monkeypatch):

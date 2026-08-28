@@ -46,7 +46,9 @@ AI_REQUIRED_FIELDS = {
     "important_vocabulary",
     "developer_interpretation",
 }
+AI_OPTIONAL_TRANSLATE_FIELDS = {"line_translations"}
 AI_VOCABULARY_FIELDS = {"french", "english", "explanation"}
+LINE_TRANSLATION_FIELDS = {"french", "english"}
 DEVELOPER_MODE_FIELDS = {
     "translation",
     "explicit_requirements",
@@ -320,12 +322,18 @@ def delete_saved_term(term_id):
 
 
 def validate_translate_explain_result(result, source_text):
-    if not isinstance(result, dict) or set(result) != AI_REQUIRED_FIELDS:
+    if (
+        not isinstance(result, dict)
+        or not AI_REQUIRED_FIELDS <= set(result)
+        or not set(result) <= AI_REQUIRED_FIELDS | AI_OPTIONAL_TRANSLATE_FIELDS
+    ):
         return None
 
-    for field in ("natural_english_translation", "plain_english_meaning"):
-        if not isinstance(result[field], str) or not result[field].strip():
-            return None
+    natural_translation = normalize_natural_translation(result["natural_english_translation"], source_text)
+    if natural_translation is None:
+        return None
+    if not isinstance(result["plain_english_meaning"], str) or not result["plain_english_meaning"].strip():
+        return None
 
     for field in ("business_crm_context", "developer_interpretation"):
         if result[field] is not None and (not isinstance(result[field], str) or not result[field].strip()):
@@ -334,9 +342,16 @@ def validate_translate_explain_result(result, source_text):
     clean_vocabulary = validate_important_vocabulary(result["important_vocabulary"], source_text=source_text)
     if clean_vocabulary is None:
         return None
+    raw_line_translations = result.get("line_translations")
+    line_translations = validate_line_translations(raw_line_translations, source_text)
+    if raw_line_translations is None and not line_translations:
+        line_translations = build_line_translations_from_translation(
+            source_text, natural_translation
+        )
 
     return {
-        "natural_english_translation": result["natural_english_translation"].strip(),
+        "natural_english_translation": natural_translation,
+        "line_translations": line_translations,
         "plain_english_meaning": result["plain_english_meaning"].strip(),
         "business_crm_context": result["business_crm_context"].strip() if result["business_crm_context"] else None,
         "important_vocabulary": clean_vocabulary,
@@ -358,6 +373,57 @@ def vocabulary_term_appears_in_source(term, source_text):
         if candidate and re.search(rf"(?<!\w){re.escape(candidate)}(?!\w)", normalized_source):
             return True
     return False
+
+
+def get_short_list_source_lines(source_text):
+    lines = [line.strip() for line in source_text.splitlines() if line.strip()]
+    if not 2 <= len(lines) <= 12 or any(len(line) > 80 or len(line.split()) > 8 for line in lines):
+        return []
+    if any(re.search(r"[.!?](?:[\"')\]]*)$", line) for line in lines):
+        return []
+    return lines
+
+
+def normalize_natural_translation(value, source_text):
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    source_lines = get_short_list_source_lines(source_text)
+    if (
+        source_lines
+        and isinstance(value, list)
+        and len(value) == len(source_lines)
+        and all(isinstance(line, str) and line.strip() for line in value)
+    ):
+        return "\n".join(line.strip() for line in value)
+    return None
+
+
+def validate_line_translations(line_translations, source_text):
+    source_lines = get_short_list_source_lines(source_text)
+    if not source_lines or not isinstance(line_translations, list) or len(line_translations) != len(source_lines):
+        return []
+
+    clean_lines = []
+    for source_line, translation in zip(source_lines, line_translations):
+        if not isinstance(translation, dict) or set(translation) != LINE_TRANSLATION_FIELDS:
+            return []
+        if any(not isinstance(translation[field], str) or not translation[field].strip() for field in LINE_TRANSLATION_FIELDS):
+            return []
+        if normalize_text(translation["french"]) != normalize_text(source_line):
+            return []
+        clean_lines.append({field: translation[field].strip() for field in LINE_TRANSLATION_FIELDS})
+    return clean_lines
+
+
+def build_line_translations_from_translation(source_text, natural_translation):
+    source_lines = get_short_list_source_lines(source_text)
+    english_lines = [line.strip() for line in natural_translation.splitlines() if line.strip()]
+    if not source_lines or len(english_lines) != len(source_lines):
+        return []
+    return [
+        {"french": french, "english": english}
+        for french, english in zip(source_lines, english_lines)
+    ]
 
 
 def validate_important_vocabulary(vocabulary, source_text=None):
@@ -455,11 +521,16 @@ def fetch_translate_explain(text):
         "You are a French workplace-language assistant for English-speaking software developers. "
         "Translate French text naturally and explain only what is supported by the text. "
         "Return JSON only, with exactly these keys: natural_english_translation, "
-        "plain_english_meaning, business_crm_context, important_vocabulary, developer_interpretation. "
+        "line_translations, plain_english_meaning, business_crm_context, important_vocabulary, "
+        "developer_interpretation. "
         "natural_english_translation must be a complete, faithful natural English translation of every meaningful "
         "part of the supplied French source. It is a translation, not a summary: do not omit later sentences, "
         "paragraphs, or details. plain_english_meaning must be a concise non-empty English explanation or summary "
         "of the overall text, separate from the translation. "
+        "line_translations must be null unless the source is a short multi-line list of UI labels, statuses, or "
+        "workflow actions. For such a list, return one object per non-empty source line, in the same order, with "
+        "exactly french and english fields. Each french field must reproduce its source line; do not add entries. "
+        "When the source is such a list, do not omit line_translations. "
         "business_crm_context must be a concise English string when meaningful workplace, CRM, sales, or product "
         "context is present; otherwise null. important_vocabulary must be a JSON array of at most 12 useful terms "
         "extracted from the supplied French source only. Every french term must occur in the source; do not invent "
