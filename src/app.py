@@ -36,6 +36,8 @@ SAVED_TERMS_DB_PATH = DATA_DIR / "saved_terms.db"
 SAVED_TERM_SOURCES = {"Workplace", "CRM", "Custom", "AI"}
 MAX_SAVED_TERM_LENGTH = 160
 MAX_SAVED_TEXT_LENGTH = 2000
+MAX_LOOKUP_QUERY_LENGTH = 160
+STATIC_ASSET_VERSION = "quick-lookup-ai-save-1"
 
 REQUIRED_GLOSSARY_TEXT_FIELDS = ("term", "english", "category", "explanation", "business_context")
 
@@ -48,6 +50,7 @@ AI_REQUIRED_FIELDS = {
 }
 AI_OPTIONAL_TRANSLATE_FIELDS = {"line_translations"}
 AI_VOCABULARY_FIELDS = {"french", "english", "explanation"}
+AI_LOOKUP_FIELDS = {"english", "explanation", "business_context"}
 LINE_TRANSLATION_FIELDS = {"french", "english"}
 DEVELOPER_MODE_FIELDS = {
     "translation",
@@ -464,6 +467,21 @@ def validate_developer_mode_result(result):
     }
 
 
+def validate_ai_lookup_result(result):
+    if not isinstance(result, dict) or set(result) != AI_LOOKUP_FIELDS:
+        return None
+    if any(not isinstance(result[field], str) or not result[field].strip() for field in ("english", "explanation")):
+        return None
+    business_context = result["business_context"]
+    if business_context is not None and (not isinstance(business_context, str) or not business_context.strip()):
+        return None
+    return {
+        "english": result["english"].strip(),
+        "explanation": result["explanation"].strip(),
+        "business_context": business_context.strip() if business_context else None,
+    }
+
+
 def build_translate_cache_key(text):
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
@@ -565,6 +583,26 @@ def get_translate_explain(text):
     return result, error
 
 
+def fetch_ai_lookup(query):
+    system_prompt = (
+        "You are a French workplace-language assistant for English-speaking software developers. "
+        "Give a concise lookup for the supplied French word or short phrase. Return JSON only with exactly these keys: "
+        "english, explanation, business_context. english and explanation must be concise non-empty English strings. "
+        "business_context must be a concise English string only when meaningful workplace, CRM, sales, product, or "
+        "software context is supported; otherwise null. Do not invent organization-specific meanings, policies, names, "
+        "or facts. Do not provide examples, related terms, quizzes, or a full document translation."
+    )
+    parsed_result, error = fetch_structured_ollama(system_prompt, query)
+    if error:
+        return None, error
+
+    validated_result = validate_ai_lookup_result(parsed_result)
+    if validated_result is None:
+        return None, "Local Ollama returned an invalid structured response. Please try again."
+
+    return validated_result, None
+
+
 def fetch_developer_mode(text):
     system_prompt = (
         "You are a French requirements interpretation assistant for English-speaking software developers. "
@@ -590,19 +628,49 @@ def fetch_developer_mode(text):
 
 @app.route("/", methods=["GET"])
 def home():
-    return render_template("index.html")
+    return render_template("index.html", static_asset_version=STATIC_ASSET_VERSION)
 
 
 @app.route("/api/lookup", methods=["POST"])
 def api_lookup():
-    payload = request.get_json(silent=True) or {}
-    query = payload.get("query", "")
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict) or not isinstance(payload.get("query"), str):
+        return jsonify({"ok": False, "error": "Request must be JSON with a query string."}), 400
+
+    query = payload["query"].strip()
     result = lookup_term(query)
 
-    if result is None:
-        return jsonify({"ok": False, "query": str(query).strip(), "result": None}), 404
+    if result is not None:
+        return jsonify({"ok": True, "query": query, "result": result, "kind": "glossary"})
 
-    return jsonify({"ok": True, "query": str(query).strip(), "result": result})
+    if not query:
+        return jsonify({"ok": False, "query": query, "result": None}), 404
+    if len(query) > MAX_LOOKUP_QUERY_LENGTH:
+        return jsonify({"ok": False, "error": f"Lookup text must be {MAX_LOOKUP_QUERY_LENGTH} characters or fewer."}), 413
+
+    ai_result, error = fetch_ai_lookup(query)
+    if error:
+        return jsonify({"ok": False, "query": query, "error": error}), 503 if "unavailable" in error else 502
+
+    return jsonify(
+        {
+            "ok": True,
+            "query": query,
+            "kind": "ai",
+            "result": {
+                "term": query,
+                "english": ai_result["english"],
+                "literal_translation": "",
+                "category": "AI-generated lookup",
+                "explanation": ai_result["explanation"],
+                "business_context": ai_result["business_context"] or "No specific workplace or CRM context identified.",
+                "examples": [],
+                "related_terms": [],
+                "source": "AI-generated",
+                "ai_generated": True,
+            },
+        }
+    )
 
 
 @app.route("/api/translate-explain", methods=["POST"])

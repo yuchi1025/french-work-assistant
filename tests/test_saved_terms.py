@@ -68,6 +68,25 @@ def test_save_ai_vocabulary_term(saved_terms_client):
     assert term["category"] == ""
 
 
+def test_save_ai_lookup_result(saved_terms_client):
+    client, _ = saved_terms_client
+
+    response = client.post(
+        "/api/saved-terms",
+        json={
+            "kind": "ai_vocabulary",
+            "french": "archiver",
+            "english": "to archive",
+            "explanation": "A generic action that moves an item out of an active view.",
+        },
+    )
+
+    assert response.status_code == 201
+    term = client.get("/api/saved-terms").get_json()["terms"][0]
+    assert term["french"] == "archiver"
+    assert term["source"] == "AI"
+
+
 def test_duplicate_normalized_terms_are_not_inserted(saved_terms_client):
     client, _ = saved_terms_client
 

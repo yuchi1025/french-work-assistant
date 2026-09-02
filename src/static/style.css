@@ -244,6 +244,12 @@ button:hover {
     margin-bottom: 0;
 }
 
+.ai-generated-notice {
+    color: var(--muted);
+    font-size: 0.9rem;
+    font-style: italic;
+}
+
 .field-block {
     margin-top: 18px;
 }

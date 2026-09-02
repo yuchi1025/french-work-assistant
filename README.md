@@ -10,7 +10,7 @@ Literal translation is often not enough for workplace language. A French CRM sta
 
 ## Features
 
-- **Quick Lookup**: Search French or English workplace and CRM terms. Results include context, examples, related terms, source, and a Save Term action.
+- **Quick Lookup**: Search French or English workplace and CRM terms. Glossary matches always win; a concise, clearly labeled local Ollama fallback runs only when no glossary entry matches. Results can be saved locally.
 - **Translate & Explain**: Translate French text naturally and explain its plain-English and workplace context with local Ollama.
 - **Developer Mode**: Interpret French requirements and issue text as translation, source-stated requirements, implementation interpretations, vocabulary, and ambiguities. Interpretation is clearly labeled as non-authoritative.
 - **Saved Terms**: Keep individual terms locally, then search, filter, and delete them.
@@ -18,7 +18,7 @@ Literal translation is often not enough for workplace language. A French CRM sta
 
 ## Local-First Privacy
 
-- Ollama runs locally. Translate & Explain and Developer Mode accept only loopback Ollama URLs such as `127.0.0.1` and `localhost`.
+- Ollama runs locally. Translate & Explain, Developer Mode, and Quick Lookup fallback accept only loopback Ollama URLs such as `127.0.0.1` and `localhost`.
 - The app does not call OpenAI, Google, DeepL, analytics tools, or other remote AI APIs.
 - Submitted AI text and complete AI results are not written to files or SQLite. Translate & Explain has a bounded in-memory cache for the running process only.
 - Saved Terms uses local SQLite at `data/saved_terms.db` and saves only terms selected explicitly by the user.
@@ -42,7 +42,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Quick Lookup and Saved Terms work without Ollama. For AI modes, install Ollama and the default model:
+Glossary-backed Quick Lookup and Saved Terms work without Ollama. Unknown Quick Lookup terms and the other AI modes use local Ollama; install the default model with:
 
 ```bash
 ollama pull gemma3

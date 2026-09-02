@@ -23,16 +23,23 @@ function renderRelatedTerms(terms) {
 }
 
 function renderResult(entry) {
+    const aiGenerated = entry.ai_generated === true;
     const literal = entry.literal_translation
         ? `<p><strong>Literal translation:</strong> ${escapeHtml(entry.literal_translation)}</p>`
         : "";
-    const examples = entry.examples.map((example) => `
+    const examples = (entry.examples || []).map((example) => `
         <div class="example-block">
             <span class="field-label">Example</span>
             <p lang="fr">${escapeHtml(example.french)}</p>
             <p>${escapeHtml(example.english)}</p>
         </div>
     `).join("");
+    const saveAction = aiGenerated
+        ? `<button type="button" class="save-term-button save-ai-term" data-french="${escapeHtml(entry.term)}" data-english="${escapeHtml(entry.english)}" data-explanation="${escapeHtml(entry.explanation)}">Save term</button>`
+        : `<button type="button" class="save-term-button save-glossary-term" data-term="${escapeHtml(entry.term)}">Save term</button>`;
+    const aiNotice = aiGenerated
+        ? `<p class="ai-generated-notice">AI-generated result. No local glossary entry matched this lookup.</p>`
+        : "";
 
     return `
         <article class="result-card">
@@ -49,8 +56,9 @@ function renderResult(entry) {
             <p><strong>Business/CRM context:</strong> ${escapeHtml(entry.business_context)}</p>
             ${examples}
             ${renderRelatedTerms(entry.related_terms)}
+            ${aiNotice}
             <div class="save-actions">
-                <button type="button" class="save-term-button save-glossary-term" data-term="${escapeHtml(entry.term)}">Save term</button>
+                ${saveAction}
                 <span class="save-feedback" aria-live="polite"></span>
             </div>
         </article>
@@ -64,6 +72,10 @@ function renderNotFound(query) {
             <p>No glossary entry exists for "${escapeHtml(query)}". Try another French workplace or CRM term.</p>
         </article>
     `;
+}
+
+function renderLookupError(message) {
+    return `<article class="empty-state"><h2>Unable to look up term</h2><p>${escapeHtml(message)}</p></article>`;
 }
 
 function setLoading() {
@@ -94,7 +106,11 @@ function handleLookup(event) {
         .then((response) => response.json().then((data) => ({ status: response.status, data })))
         .then(({ data }) => {
             const result = document.getElementById("lookup-result");
-            result.innerHTML = data.ok ? renderResult(data.result) : renderNotFound(data.query || query);
+            result.innerHTML = data.ok
+                ? renderResult(data.result)
+                : data.error
+                    ? renderLookupError(data.error)
+                    : renderNotFound(data.query || query);
             input.focus();
         })
         .catch(() => {
@@ -475,6 +491,15 @@ document.addEventListener("DOMContentLoaded", () => {
         const glossaryButton = event.target.closest(".save-glossary-term");
         if (glossaryButton) {
             saveTerm(glossaryButton, { kind: "glossary", term: glossaryButton.dataset.term });
+        }
+        const aiButton = event.target.closest(".save-ai-term");
+        if (aiButton) {
+            saveTerm(aiButton, {
+                kind: "ai_vocabulary",
+                french: aiButton.dataset.french,
+                english: aiButton.dataset.english,
+                explanation: aiButton.dataset.explanation,
+            });
         }
     });
 
