@@ -250,6 +250,11 @@ button:hover {
     font-style: italic;
 }
 
+.save-status {
+    color: var(--accent-dark);
+    font-weight: 700;
+}
+
 .field-block {
     margin-top: 18px;
 }

@@ -109,28 +109,81 @@ def test_developer_mode_rejects_malformed_ollama_json(monkeypatch, developer_cli
     assert "invalid structured response" in response.get_json()["error"]
 
 
-def test_developer_mode_rejects_missing_and_wrong_schema_fields(monkeypatch, developer_client):
+def test_developer_mode_rejects_missing_or_empty_translation(monkeypatch, developer_client):
+    result = valid_developer_result()
+    result.pop("translation")
+    mock_ollama(monkeypatch, result)
+
+    assert developer_client.post("/api/developer-mode", json={"text": "Le statut doit être visible."}).status_code == 502
+
+    result = valid_developer_result()
+    result["translation"] = " "
+    mock_ollama(monkeypatch, result)
+
+    assert developer_client.post("/api/developer-mode", json={"text": "Le statut doit être visible."}).status_code == 502
+
+
+def test_developer_mode_rejects_missing_conceptual_field(monkeypatch, developer_client):
     result = valid_developer_result()
     result.pop("ambiguities")
-    mock_ollama(monkeypatch, result)
-
-    assert developer_client.post("/api/developer-mode", json={"text": "Le statut doit être visible."}).status_code == 502
-
-    result = valid_developer_result()
-    result["implementation_notes"] = "not a list"
-    mock_ollama(monkeypatch, result)
-
-    assert developer_client.post("/api/developer-mode", json={"text": "Le statut doit être visible."}).status_code == 502
-
-
-def test_developer_mode_rejects_invalid_vocabulary_structure(monkeypatch, developer_client):
-    result = valid_developer_result()
-    result["important_vocabulary"] = [{"french": "hors cible", "english": "outside target"}]
     mock_ollama(monkeypatch, result)
 
     response = developer_client.post("/api/developer-mode", json={"text": "Le statut doit être visible."})
 
     assert response.status_code == 502
+
+
+def test_developer_mode_normalizes_short_requirement_strings_and_ignores_extra_fields(monkeypatch, developer_client):
+    result = valid_developer_result()
+    result.update(
+        {
+            "translation": "Fix: Click event: start date.",
+            "explicit_requirements": "Clicking an event should use its start date.",
+            "implementation_notes": "Confirm where the start date should be displayed.",
+            "important_vocabulary": [],
+            "ambiguities": [],
+            "model_note": "Harmless extra metadata.",
+        }
+    )
+    mock_ollama(monkeypatch, result)
+
+    response = developer_client.post(
+        "/api/developer-mode",
+        json={"text": "Fix: Cliquez sur événement: date de début"},
+    )
+
+    assert response.status_code == 200
+    data = response.get_json()["result"]
+    assert data["explicit_requirements"] == ["Clicking an event should use its start date."]
+    assert data["implementation_notes"] == ["Confirm where the start date should be displayed."]
+    assert data["ambiguities"] == []
+
+
+def test_developer_mode_accepts_empty_optional_sections(monkeypatch, developer_client):
+    result = valid_developer_result()
+    result["implementation_notes"] = []
+    result["ambiguities"] = []
+    result["important_vocabulary"] = []
+    mock_ollama(monkeypatch, result)
+
+    response = developer_client.post("/api/developer-mode", json={"text": "Le statut doit être visible."})
+
+    assert response.status_code == 200
+    data = response.get_json()["result"]
+    assert data["implementation_notes"] == []
+    assert data["ambiguities"] == []
+
+
+def test_developer_mode_filters_malformed_vocabulary_entries(monkeypatch, developer_client):
+    result = valid_developer_result()
+    result["important_vocabulary"].append({"french": "incomplet", "english": "incomplete"})
+    result["important_vocabulary"].append("not an object")
+    mock_ollama(monkeypatch, result)
+
+    response = developer_client.post("/api/developer-mode", json={"text": "Le statut doit être visible."})
+
+    assert response.status_code == 200
+    assert response.get_json()["result"]["important_vocabulary"] == [valid_developer_result()["important_vocabulary"][0]]
 
 
 def test_developer_mode_handles_ollama_unavailable_and_timeout(monkeypatch, developer_client):

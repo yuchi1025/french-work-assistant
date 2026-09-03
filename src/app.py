@@ -36,8 +36,9 @@ SAVED_TERMS_DB_PATH = DATA_DIR / "saved_terms.db"
 SAVED_TERM_SOURCES = {"Workplace", "CRM", "Custom", "AI"}
 MAX_SAVED_TERM_LENGTH = 160
 MAX_SAVED_TEXT_LENGTH = 2000
+MAX_SAVED_TERM_STATUS_ITEMS = 12
 MAX_LOOKUP_QUERY_LENGTH = 160
-STATIC_ASSET_VERSION = "quick-lookup-ai-save-1"
+STATIC_ASSET_VERSION = "saved-term-status-1"
 
 REQUIRED_GLOSSARY_TEXT_FIELDS = ("term", "english", "category", "explanation", "business_context")
 
@@ -324,6 +325,18 @@ def delete_saved_term(term_id):
     return cursor.rowcount > 0
 
 
+def get_saved_term_statuses(terms):
+    normalized_terms = [normalize_text(term) for term in terms]
+    placeholders = ", ".join("?" for _ in set(normalized_terms))
+    with connect_saved_terms_db() as connection:
+        rows = connection.execute(
+            f"SELECT normalized_term FROM saved_terms WHERE normalized_term IN ({placeholders})",
+            tuple(set(normalized_terms)),
+        ).fetchall()
+    saved_terms = {row["normalized_term"] for row in rows}
+    return [term in saved_terms for term in normalized_terms]
+
+
 def validate_translate_explain_result(result, source_text):
     if (
         not isinstance(result, dict)
@@ -363,6 +376,8 @@ def validate_translate_explain_result(result, source_text):
 
 
 def validate_string_list(value, limit):
+    if isinstance(value, str):
+        return [value.strip()] if value.strip() else None
     if not isinstance(value, list) or len(value) > limit:
         return None
     if any(not isinstance(item, str) or not item.strip() for item in value):
@@ -445,8 +460,21 @@ def validate_important_vocabulary(vocabulary, source_text=None):
     return clean_vocabulary
 
 
+def validate_developer_vocabulary(vocabulary):
+    if not isinstance(vocabulary, list) or len(vocabulary) > MAX_DEVELOPER_LIST_ITEMS:
+        return None
+    clean_vocabulary = []
+    for item in vocabulary:
+        if not isinstance(item, dict) or not AI_VOCABULARY_FIELDS <= set(item):
+            continue
+        if any(not isinstance(item[field], str) or not item[field].strip() for field in AI_VOCABULARY_FIELDS):
+            continue
+        clean_vocabulary.append({field: item[field].strip() for field in AI_VOCABULARY_FIELDS})
+    return clean_vocabulary
+
+
 def validate_developer_mode_result(result):
-    if not isinstance(result, dict) or set(result) != DEVELOPER_MODE_FIELDS:
+    if not isinstance(result, dict) or not DEVELOPER_MODE_FIELDS <= set(result):
         return None
     if not isinstance(result["translation"], str) or not result["translation"].strip():
         return None
@@ -454,7 +482,7 @@ def validate_developer_mode_result(result):
     explicit_requirements = validate_string_list(result["explicit_requirements"], MAX_DEVELOPER_LIST_ITEMS)
     implementation_notes = validate_string_list(result["implementation_notes"], MAX_DEVELOPER_LIST_ITEMS)
     ambiguities = validate_string_list(result["ambiguities"], MAX_DEVELOPER_LIST_ITEMS)
-    vocabulary = validate_important_vocabulary(result["important_vocabulary"])
+    vocabulary = validate_developer_vocabulary(result["important_vocabulary"])
     if any(value is None for value in (explicit_requirements, implementation_notes, ambiguities, vocabulary)):
         return None
 
@@ -613,7 +641,8 @@ def fetch_developer_mode(text):
         "there. implementation_notes must contain only reasonable developer-oriented interpretations or suggestions; "
         "they are not confirmed requirements. ambiguities must contain only source-specific questions that need "
         "clarification, not generic filler. important_vocabulary must contain at most 12 objects with exactly french, "
-        "english, and explanation as non-empty strings. Each array must contain at most 12 concise strings or objects. "
+        "english, and explanation as non-empty strings. Each array must contain at most 12 concise strings or objects "
+        "and may be empty when the source does not support meaningful content for that section. "
         "Never invent company policies, permissions, statuses, workflows, or facts. Surface uncertainty in ambiguities."
     )
     parsed_result, error = fetch_structured_ollama(system_prompt, text)
@@ -753,6 +782,22 @@ def api_save_term():
     if not created:
         return jsonify({"ok": True, "saved": False, "message": "Already saved."})
     return jsonify({"ok": True, "saved": True, "id": saved_id, "message": "Saved."}), 201
+
+
+@app.route("/api/saved-terms/status", methods=["POST"])
+def api_saved_term_statuses():
+    payload = request.get_json(silent=True)
+    terms = payload.get("terms") if isinstance(payload, dict) else None
+    if not isinstance(terms, list) or not 1 <= len(terms) <= MAX_SAVED_TERM_STATUS_ITEMS:
+        return jsonify({"ok": False, "error": "Request must include up to 12 term strings."}), 400
+    clean_terms = [validate_saved_text(term, limit=MAX_SAVED_TERM_LENGTH) for term in terms]
+    if any(term is None for term in clean_terms):
+        return jsonify({"ok": False, "error": "Request must include valid term strings."}), 400
+    try:
+        saved = get_saved_term_statuses(clean_terms)
+    except (OSError, sqlite3.Error):
+        return jsonify({"ok": False, "error": "Saved Terms storage is unavailable. Please try again."}), 503
+    return jsonify({"ok": True, "saved": saved})
 
 
 @app.route("/api/saved-terms/<term_id>", methods=["DELETE"])

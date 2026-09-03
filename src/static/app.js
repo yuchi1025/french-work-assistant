@@ -22,7 +22,7 @@ function renderRelatedTerms(terms) {
     `;
 }
 
-function renderResult(entry) {
+function renderResult(entry, isSaved = false) {
     const aiGenerated = entry.ai_generated === true;
     const literal = entry.literal_translation
         ? `<p><strong>Literal translation:</strong> ${escapeHtml(entry.literal_translation)}</p>`
@@ -34,9 +34,10 @@ function renderResult(entry) {
             <p>${escapeHtml(example.english)}</p>
         </div>
     `).join("");
-    const saveAction = aiGenerated
+    const saveButton = aiGenerated
         ? `<button type="button" class="save-term-button save-ai-term" data-french="${escapeHtml(entry.term)}" data-english="${escapeHtml(entry.english)}" data-explanation="${escapeHtml(entry.explanation)}">Save term</button>`
         : `<button type="button" class="save-term-button save-glossary-term" data-term="${escapeHtml(entry.term)}">Save term</button>`;
+    const saveAction = isSaved ? `<span class="save-status">Saved</span>` : saveButton;
     const aiNotice = aiGenerated
         ? `<p class="ai-generated-notice">AI-generated result. No local glossary entry matched this lookup.</p>`
         : "";
@@ -86,6 +87,24 @@ function setLoading() {
     `;
 }
 
+function fetchSavedTermStatuses(terms) {
+    if (!terms.length) {
+        return Promise.resolve([]);
+    }
+    return fetch("/api/saved-terms/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ terms }),
+    })
+        .then((response) => response.json())
+        .then((data) => (data.ok && Array.isArray(data.saved) ? data.saved : terms.map(() => false)))
+        .catch(() => terms.map(() => false));
+}
+
+function renderWithSaveStatuses(resultElement, terms, render) {
+    fetchSavedTermStatuses(terms).then((statuses) => resultElement.innerHTML = render(statuses));
+}
+
 function handleLookup(event) {
     event.preventDefault();
 
@@ -106,11 +125,11 @@ function handleLookup(event) {
         .then((response) => response.json().then((data) => ({ status: response.status, data })))
         .then(({ data }) => {
             const result = document.getElementById("lookup-result");
-            result.innerHTML = data.ok
-                ? renderResult(data.result)
-                : data.error
-                    ? renderLookupError(data.error)
-                    : renderNotFound(data.query || query);
+            if (data.ok) {
+                renderWithSaveStatuses(result, [data.result.term], (statuses) => renderResult(data.result, statuses[0]));
+            } else {
+                result.innerHTML = data.error ? renderLookupError(data.error) : renderNotFound(data.query || query);
+            }
             input.focus();
         })
         .catch(() => {
@@ -129,7 +148,11 @@ function renderTranslateError(message) {
     return `<article class="empty-state"><h2>Unable to translate</h2><p>${escapeHtml(message)}</p></article>`;
 }
 
-function renderVocabulary(vocabulary, emptyMessage = "") {
+function renderDeveloperError(message) {
+    return `<article class="empty-state"><h2>Unable to interpret requirement</h2><p>${escapeHtml(message)}</p></article>`;
+}
+
+function renderVocabulary(vocabulary, emptyMessage = "", savedStatuses = []) {
     if (!vocabulary.length) {
         return emptyMessage
             ? `<section class="translate-section"><h3>Important Vocabulary</h3><p class="section-empty">${escapeHtml(emptyMessage)}</p></section>`
@@ -140,13 +163,15 @@ function renderVocabulary(vocabulary, emptyMessage = "") {
         <section class="translate-section">
             <h3>Important Vocabulary</h3>
             <div class="vocabulary-list">
-                ${vocabulary.map((item) => `
+                ${vocabulary.map((item, index) => `
                     <article class="vocabulary-item">
                         <h4>${escapeHtml(item.french)}</h4>
                         <p><strong>${escapeHtml(item.english)}</strong></p>
                         <p>${escapeHtml(item.explanation)}</p>
                         <div class="save-actions">
-                            <button type="button" class="save-term-button save-ai-term" data-french="${escapeHtml(item.french)}" data-english="${escapeHtml(item.english)}" data-explanation="${escapeHtml(item.explanation)}">Save term</button>
+                            ${savedStatuses[index]
+                                ? `<span class="save-status">Saved</span>`
+                                : `<button type="button" class="save-term-button save-ai-term" data-french="${escapeHtml(item.french)}" data-english="${escapeHtml(item.english)}" data-explanation="${escapeHtml(item.explanation)}">Save term</button>`}
                             <span class="save-feedback" aria-live="polite"></span>
                         </div>
                     </article>
@@ -176,7 +201,7 @@ function renderLineTranslations(lineTranslations) {
     `;
 }
 
-function renderTranslateResult(result) {
+function renderTranslateResult(result, savedStatuses = []) {
     const businessContext = result.business_crm_context
         ? `<section class="translate-section"><h3>Business / CRM Context</h3><p>${escapeHtml(result.business_crm_context)}</p></section>`
         : "";
@@ -198,7 +223,7 @@ function renderTranslateResult(result) {
                 <p>${escapeHtml(result.plain_english_meaning)}</p>
             </section>
             ${businessContext}
-            ${renderVocabulary(result.important_vocabulary)}
+            ${renderVocabulary(result.important_vocabulary, "", savedStatuses)}
             ${developerInterpretation}
         </article>
     `;
@@ -224,7 +249,15 @@ function handleTranslate(event) {
     })
         .then((response) => response.json().then((data) => ({ status: response.status, data })))
         .then(({ data }) => {
-            result.innerHTML = data.ok ? renderTranslateResult(data.result) : renderTranslateError(data.error);
+            if (data.ok) {
+                renderWithSaveStatuses(
+                    result,
+                    data.result.important_vocabulary.map((item) => item.french),
+                    (statuses) => renderTranslateResult(data.result, statuses),
+                );
+            } else {
+                result.innerHTML = renderTranslateError(data.error);
+            }
         })
         .catch(() => {
             result.innerHTML = renderTranslateError("The local service could not be reached. Check that Ollama is running and try again.");
@@ -265,8 +298,8 @@ function buildDeveloperCopyText(result) {
     ].join("\n\n");
 }
 
-function renderDeveloperResult(result) {
-    const vocabulary = renderVocabulary(result.important_vocabulary, "No important vocabulary was identified.");
+function renderDeveloperResult(result, savedStatuses = []) {
+    const vocabulary = renderVocabulary(result.important_vocabulary, "No important vocabulary was identified.", savedStatuses);
     return `
         <article class="result-card developer-result-card">
             <section class="developer-section developer-translation">
@@ -306,10 +339,18 @@ function handleDeveloperMode(event) {
     })
         .then((response) => response.json().then((data) => ({ status: response.status, data })))
         .then(({ data }) => {
-            result.innerHTML = data.ok ? renderDeveloperResult(data.result) : renderTranslateError(data.error);
+            if (data.ok) {
+                renderWithSaveStatuses(
+                    result,
+                    data.result.important_vocabulary.map((item) => item.french),
+                    (statuses) => renderDeveloperResult(data.result, statuses),
+                );
+            } else {
+                result.innerHTML = renderDeveloperError(data.error);
+            }
         })
         .catch(() => {
-            result.innerHTML = renderTranslateError("The local service could not be reached. Check that Ollama is running and try again.");
+            result.innerHTML = renderDeveloperError("The local service could not be reached. Check that Ollama is running and try again.");
         });
 }
 

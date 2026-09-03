@@ -45,7 +45,7 @@ def test_home_page_loads():
     assert b"French Work Assistant" in response.data
     assert b"Quick Lookup" in response.data
     assert b"Developer Mode" in response.data
-    assert b"app.js?v=quick-lookup-ai-save-1" in response.data
+    assert b"app.js?v=saved-term-status-1" in response.data
 
 
 def test_lookup_api_returns_glossary_result_without_ai_fallback(monkeypatch):

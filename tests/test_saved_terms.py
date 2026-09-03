@@ -87,6 +87,23 @@ def test_save_ai_lookup_result(saved_terms_client):
     assert term["source"] == "AI"
 
 
+def test_saved_term_statuses_report_only_requested_terms(saved_terms_client):
+    client, _ = saved_terms_client
+    assert save_glossary_term(client, "prospect").status_code == 201
+
+    response = client.post("/api/saved-terms/status", json={"terms": ["PROSPECT", "devis"]})
+
+    assert response.status_code == 200
+    assert response.get_json() == {"ok": True, "saved": [True, False]}
+
+
+def test_saved_term_statuses_reject_invalid_requests(saved_terms_client):
+    client, _ = saved_terms_client
+
+    assert client.post("/api/saved-terms/status", json={"terms": []}).status_code == 400
+    assert client.post("/api/saved-terms/status", json={"terms": ["prospect", 1]}).status_code == 400
+
+
 def test_duplicate_normalized_terms_are_not_inserted(saved_terms_client):
     client, _ = saved_terms_client
 
